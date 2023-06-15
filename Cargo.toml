@@ -6,4 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+age-core = "0.9.0"
+age-plugin = "0.4.0"
+clap = { version = "4.3.0", features = ["cargo"] }
 gf256 = { version = "0.3.0", features = ["shamir"] }
