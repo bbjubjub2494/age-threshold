@@ -2,15 +2,9 @@ use bech32::{self, FromBase32};
 use rlp::{RlpDecodable, RlpEncodable};
 
 #[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
-struct ThresholdRecipient {
-    t: u64,
-    recipients: Vec<Recipient>,
-}
-
-#[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
-struct Recipient {
-    plugin: Option<String>,
-    data: Vec<u8>,
+pub struct Recipient {
+    pub plugin: Option<String>,
+    pub data: Vec<u8>,
 }
 
 const PLUGIN_RECIPIENT_PREFIX: &str = "age1";
