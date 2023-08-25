@@ -10,6 +10,6 @@ age-core = "0.9.0"
 age-plugin = "0.4.0"
 bech32 = "0.9.1"
 clap = { version = "4.3.0", features = ["cargo"] }
-gf256 = { version = "0.3.0", features = ["shamir"] }
+gf256 = { version = "0.3.0", features = ["shamir", "thread-rng"] }
 hex-literal = "0.4.1"
 rlp = { version = "0.5.2", features = ["derive"] }

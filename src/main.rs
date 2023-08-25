@@ -1,11 +1,10 @@
 use age_core::format::{FileKey, Stanza};
 use age_plugin::{
     identity::{self, IdentityPluginV1},
-    print_new_identity,
     recipient::{self, RecipientPluginV1},
-    Callbacks, run_state_machine,
+    run_state_machine, Callbacks,
 };
-use clap::{arg, command, value_parser};
+use clap::{arg, command};
 use std::collections::HashMap;
 use std::io;
 
@@ -15,32 +14,30 @@ struct RecipientPlugin;
 impl RecipientPluginV1 for RecipientPlugin {
     fn add_recipient(
         &mut self,
-        index: usize,
-        plugin_name: &str,
-        bytes: &[u8],
+        _index: usize,
+        _plugin_name: &str,
+        _bytes: &[u8],
     ) -> Result<(), recipient::Error> {
         todo!()
     }
 
     fn add_identity(
         &mut self,
-        index: usize,
-        plugin_name: &str,
-        bytes: &[u8]
+        _index: usize,
+        _plugin_name: &str,
+        _bytes: &[u8],
     ) -> Result<(), recipient::Error> {
         todo!()
     }
 
     fn wrap_file_keys(
         &mut self,
-        file_keys: Vec<FileKey>,
-        mut callbacks: impl Callbacks<recipient::Error>,
+        _file_keys: Vec<FileKey>,
+        _callbacks: impl Callbacks<recipient::Error>,
     ) -> io::Result<Result<Vec<Vec<Stanza>>, Vec<recipient::Error>>> {
         todo!()
     }
 }
-
-type SecretShare = Vec<u8>;
 
 
 #[derive(Debug, Default)]
@@ -51,17 +48,17 @@ struct IdentityPlugin {
 impl IdentityPluginV1 for IdentityPlugin {
     fn add_identity(
         &mut self,
-        index: usize,
-        plugin_name: &str,
-        bytes: &[u8]
+        _index: usize,
+        _plugin_name: &str,
+        _bytes: &[u8],
     ) -> Result<(), identity::Error> {
         todo!()
     }
 
     fn unwrap_file_keys(
         &mut self,
-        files: Vec<Vec<Stanza>>,
-        mut callbacks: impl Callbacks<identity::Error>,
+        _files: Vec<Vec<Stanza>>,
+        _callbacks: impl Callbacks<identity::Error>,
     ) -> io::Result<HashMap<usize, Result<FileKey, Vec<identity::Error>>>> {
         todo!()
     }
@@ -69,9 +66,7 @@ impl IdentityPluginV1 for IdentityPlugin {
 
 fn main() -> io::Result<()> {
     let cmd = command!()
-        .arg(
-            arg!(--"age-plugin" <state_machine> "run the given age plugin state machine")
-            )
+        .arg(arg!(--"age-plugin" <state_machine> "run the given age plugin state machine"))
         .get_matches();
 
     if let Some(state_machine) = cmd.get_one::<String>("age-plugin") {
