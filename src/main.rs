@@ -39,10 +39,9 @@ impl RecipientPluginV1 for RecipientPlugin {
     }
 }
 
-
 #[derive(Debug, Default)]
 struct IdentityPlugin {
-    shares: Vec<SecretShare>,
+    shares: Vec<age_plugin_threshold::crypto::SecretShare>,
 }
 
 impl IdentityPluginV1 for IdentityPlugin {
