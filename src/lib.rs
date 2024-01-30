@@ -1,3 +1,3 @@
 pub mod crypto;
-pub mod recipient;
+pub mod generic_recipient;
 pub mod threshold_recipient;

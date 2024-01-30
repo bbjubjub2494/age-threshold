@@ -8,13 +8,31 @@ use clap::{arg, command};
 use std::collections::HashMap;
 use std::io;
 
-use age_core::secrecy::ExposeSecret;
+use age_core::secrecy::Secret;
 use age_plugin_threshold::crypto;
 use age_plugin_threshold::threshold_recipient::ThresholdRecipient;
 
 #[derive(Debug, Default)]
 struct RecipientPlugin {
     recipients: Vec<ThresholdRecipient>,
+}
+
+struct CallbacksAdapter<C: age_plugin::Callbacks<recipient::Error>>(C);
+
+#[derive(Clone)]
+struct CallbacksStub;
+impl age::Callbacks for CallbacksStub {
+    // FIXME
+    fn display_message(&self, _: &str) {}
+    fn confirm(&self, _: &str, _: &str, _: Option<&str>) -> Option<bool> {
+        None
+    }
+    fn request_public_string(&self, _: &str) -> Option<std::string::String> {
+        None
+    }
+    fn request_passphrase(&self, _: &str) -> Option<Secret<std::string::String>> {
+        None
+    }
 }
 
 impl RecipientPluginV1 for RecipientPlugin {
@@ -47,7 +65,7 @@ impl RecipientPluginV1 for RecipientPlugin {
     fn wrap_file_keys(
         &mut self,
         file_keys: Vec<FileKey>,
-        _callbacks: impl Callbacks<recipient::Error>,
+        callbacks: impl Callbacks<recipient::Error>,
     ) -> io::Result<Result<Vec<Vec<Stanza>>, Vec<recipient::Error>>> {
         Ok(Ok(self
             .recipients
@@ -57,17 +75,27 @@ impl RecipientPluginV1 for RecipientPlugin {
                     .iter()
                     .map(|fk| {
                         let shares = crypto::share_secret(fk, r.t.into(), r.recipients.len());
-                        // TODO: wrap shares
+                        let enc_shares = shares
+                            .iter()
+                            .zip(r.recipients.iter())
+                            .map(|(s, r)| {
+                                r.to_recipient(CallbacksStub {})
+                                    .unwrap() // FIXME: error handling
+                                    .wrap_file_key(&s.file_key)
+                                    .unwrap()
+                            })
+                            .collect::<Vec<_>>();
                         Stanza {
                             tag: "threshold".into(),
                             args: vec![],
                             body: rlp::encode(
-                                &shares
+                                &enc_shares
                                     .iter()
-                                    .flat_map(|s| s.expose_secret().clone())
+                                    .flatten()
+                                    .flat_map(|s| s.body.clone()) // FIXME: some serialization?
                                     .collect::<Vec<_>>(),
                             )
-                            .to_vec(), // FIXME: not space efficient
+                            .to_vec(),
                         }
                     })
                     .collect()

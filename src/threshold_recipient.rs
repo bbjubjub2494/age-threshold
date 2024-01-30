@@ -1,11 +1,11 @@
-use crate::recipient::Recipient;
+use crate::generic_recipient::GenericRecipient;
 use bech32::{self, FromBase32, ToBase32, Variant};
 use rlp::{RlpDecodable, RlpEncodable};
 
 #[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
 pub struct ThresholdRecipient {
     pub t: u16,
-    pub recipients: Vec<Recipient>,
+    pub recipients: Vec<GenericRecipient>,
 }
 
 const PLUGIN_RECIPIENT_HRP: &str = "age1threshold";
@@ -35,14 +35,14 @@ impl ThresholdRecipient {
 
 #[cfg(test)]
 mod tests {
-    use super::{Recipient, ThresholdRecipient};
+    use super::{GenericRecipient, ThresholdRecipient};
     use hex_literal::hex;
 
     #[test]
     fn test_example_encode() {
         let example = ThresholdRecipient {
             t: 1,
-            recipients: vec![Recipient {
+            recipients: vec![GenericRecipient {
                 plugin: None,
                 data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a")
                     .to_vec(),
@@ -58,7 +58,7 @@ mod tests {
         let example = "age1threshold17yq7lmkqasrcrc30tezgrf2zs85grhyp3e6n5s39rcgppqwv0xqarqvjsxecracutvwgr9ty2gycrxt6ltfyua";
         let expected = ThresholdRecipient {
             t: 1,
-            recipients: vec![Recipient {
+            recipients: vec![GenericRecipient {
                 plugin: None,
                 data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a")
                     .to_vec(),
