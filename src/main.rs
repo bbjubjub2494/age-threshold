@@ -20,18 +20,18 @@ struct RecipientPlugin {
 impl RecipientPluginV1 for RecipientPlugin {
     fn add_recipient(
         &mut self,
-        _index: usize,
-        _plugin_name: &str,
-        _bytes: &[u8],
+        index: usize,
+        plugin_name: &str,
+        bytes: &[u8],
     ) -> Result<(), recipient::Error> {
-        if _plugin_name != "threshold" {
+        if plugin_name != "threshold" {
             return Err(recipient::Error::Recipient {
-                index: _index,
+                index: index,
                 message: "not age-plugin-threshold".into(),
             });
         }
         self.recipients
-            .push(ThresholdRecipient::from_rlp(_bytes).unwrap());
+            .push(ThresholdRecipient::from_rlp(bytes).unwrap());
         Ok(())
     }
 
@@ -77,9 +77,7 @@ impl RecipientPluginV1 for RecipientPlugin {
 }
 
 #[derive(Debug, Default)]
-struct IdentityPlugin {
-    shares: Vec<age_plugin_threshold::crypto::SecretShare>,
-}
+struct IdentityPlugin {}
 
 impl IdentityPluginV1 for IdentityPlugin {
     fn add_identity(
@@ -93,8 +91,8 @@ impl IdentityPluginV1 for IdentityPlugin {
 
     fn unwrap_file_keys(
         &mut self,
-        file_keys: Vec<Vec<Stanza>>,
-        callbacks: impl Callbacks<identity::Error>,
+        _file_keys: Vec<Vec<Stanza>>,
+        _callbacks: impl Callbacks<identity::Error>,
     ) -> io::Result<HashMap<usize, Result<FileKey, Vec<identity::Error>>>> {
         todo!()
     }
