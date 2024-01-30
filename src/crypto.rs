@@ -2,36 +2,49 @@ use age_core::format::{FileKey, FILE_KEY_BYTES};
 use age_core::secrecy::{ExposeSecret, Secret, Zeroize};
 use gf256::shamir::shamir;
 
-#[derive(Debug)]
-pub struct SecretShare(Secret<[u8; SHARE_BYTES]>);
-
-impl ExposeSecret<[u8; SHARE_BYTES]> for SecretShare {
-    fn expose_secret(&self) -> &[u8; SHARE_BYTES] {
-        self.0.expose_secret()
-    }
+pub struct SecretShare {
+    pub index: u8,
+    pub file_key: FileKey,
 }
 
-// FIXME: there is an assumption that one of the bytes is actually an index, make that explicit
-const SHARE_BYTES: usize = 17;
+impl ExposeSecret<[u8; FILE_KEY_BYTES]> for SecretShare {
+    fn expose_secret(&self) -> &[u8; FILE_KEY_BYTES] {
+        self.file_key.expose_secret()
+    }
+}
 
 pub fn share_secret(fk: &FileKey, t: usize, n: usize) -> Vec<SecretShare> {
     shamir::generate(fk.expose_secret(), n, t)
         .iter_mut()
-        .map(|share| {
-            assert!(share.len() == SHARE_BYTES);
-            let mut buf = [0u8; SHARE_BYTES];
-            buf.copy_from_slice(&share[..]);
+        .enumerate()
+        .map(|(i, share)| {
+            assert!(share.len() == FILE_KEY_BYTES + 1);
+            let index: u8 = share[0];
+            assert!(usize::from(index) == i + 1);
+            let mut buf = [0u8; FILE_KEY_BYTES];
+            buf.copy_from_slice(&share[1..]);
             share.zeroize();
-            SecretShare(Secret::new(buf))
+            SecretShare {
+                index,
+                file_key: FileKey::from(buf),
+            }
         })
         .collect()
 }
 
 pub fn reconstruct_secret(shares: &[SecretShare]) -> FileKey {
+    let bufs = shares
+        .iter()
+        .map(|share| {
+            let mut buf = [0u8; FILE_KEY_BYTES + 1];
+            buf[0] = share.index;
+            buf[1..].copy_from_slice(share.file_key.expose_secret());
+            Secret::from(buf)
+        })
+        .collect::<Vec<_>>();
     let mut secret = shamir::reconstruct(
-        shares
-            .iter()
-            .map(|share| share.0.expose_secret().as_slice())
+        bufs.iter()
+            .map(|buf| buf.expose_secret())
             .collect::<Vec<_>>()
             .as_slice(),
     );
