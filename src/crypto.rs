@@ -5,10 +5,16 @@ use gf256::shamir::shamir;
 #[derive(Debug)]
 pub struct SecretShare(Secret<[u8; SHARE_BYTES]>);
 
+impl ExposeSecret<[u8; SHARE_BYTES]> for SecretShare {
+    fn expose_secret(&self) -> &[u8; SHARE_BYTES] {
+        self.0.expose_secret()
+    }
+}
+
+// FIXME: there is an assumption that one of the bytes is actually an index, make that explicit
 const SHARE_BYTES: usize = 17;
 
-fn share_secret(fk: FileKey, t: usize, n: usize) -> Vec<SecretShare> {
-    dbg!(fk.expose_secret());
+pub fn share_secret(fk: &FileKey, t: usize, n: usize) -> Vec<SecretShare> {
     shamir::generate(fk.expose_secret(), n, t)
         .iter_mut()
         .map(|share| {
@@ -21,7 +27,7 @@ fn share_secret(fk: FileKey, t: usize, n: usize) -> Vec<SecretShare> {
         .collect()
 }
 
-fn reconstruct_secret(shares: &[SecretShare]) -> FileKey {
+pub fn reconstruct_secret(shares: &[SecretShare]) -> FileKey {
     let mut secret = shamir::reconstruct(
         shares
             .iter()
@@ -46,7 +52,7 @@ mod tests {
         let actual = [0xa; FILE_KEY_BYTES];
         let t = 3;
         let n = 5;
-        let shares = share_secret(FileKey::from(actual), t, n);
+        let shares = share_secret(&FileKey::from(actual), t, n);
         let result = reconstruct_secret(&shares[..]);
         let expected = result.expose_secret();
         assert_eq!(&actual, expected);

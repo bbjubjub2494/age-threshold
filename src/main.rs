@@ -8,8 +8,14 @@ use clap::{arg, command};
 use std::collections::HashMap;
 use std::io;
 
+use age_plugin_threshold::threshold_recipient::ThresholdRecipient;
+use age_plugin_threshold::crypto;
+use age_core::secrecy::ExposeSecret;
+
 #[derive(Debug, Default)]
-struct RecipientPlugin;
+struct RecipientPlugin{
+    recipients: Vec<ThresholdRecipient>,
+}
 
 impl RecipientPluginV1 for RecipientPlugin {
     fn add_recipient(
@@ -18,7 +24,15 @@ impl RecipientPluginV1 for RecipientPlugin {
         _plugin_name: &str,
         _bytes: &[u8],
     ) -> Result<(), recipient::Error> {
-        todo!()
+        if _plugin_name != "threshold" {
+            return Err(recipient::Error::Recipient {
+                index: _index,
+                message: "not age-plugin-threshold".into(),
+            });
+        }
+        self.recipients
+            .push(ThresholdRecipient::from_rlp(_bytes).unwrap());
+        Ok(())
     }
 
     fn add_identity(
@@ -32,10 +46,33 @@ impl RecipientPluginV1 for RecipientPlugin {
 
     fn wrap_file_keys(
         &mut self,
-        _file_keys: Vec<FileKey>,
+        file_keys: Vec<FileKey>,
         _callbacks: impl Callbacks<recipient::Error>,
     ) -> io::Result<Result<Vec<Vec<Stanza>>, Vec<recipient::Error>>> {
-        todo!()
+        Ok(Ok(self
+            .recipients
+            .iter()
+            .map(|r| {
+                file_keys
+                    .iter()
+                    .map(|fk| {
+                        let shares = crypto::share_secret(fk, r.t.into(), r.recipients.len());
+                        // TODO: wrap shares
+                        Stanza {
+                            tag: "threshold".into(),
+                            args: vec![],
+                            body: rlp::encode(
+                                &shares
+                                    .iter()
+                                    .flat_map(|s| s.expose_secret().clone())
+                                    .collect::<Vec<_>>(),
+                            )
+                            .to_vec(), // FIXME: not space efficient
+                        }
+                    })
+                    .collect()
+            })
+            .collect()))
     }
 }
 
@@ -56,8 +93,8 @@ impl IdentityPluginV1 for IdentityPlugin {
 
     fn unwrap_file_keys(
         &mut self,
-        _files: Vec<Vec<Stanza>>,
-        _callbacks: impl Callbacks<identity::Error>,
+        file_keys: Vec<Vec<Stanza>>,
+        callbacks: impl Callbacks<identity::Error>,
     ) -> io::Result<HashMap<usize, Result<FileKey, Vec<identity::Error>>>> {
         todo!()
     }

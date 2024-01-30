@@ -3,15 +3,15 @@ use bech32::{self, FromBase32, ToBase32, Variant};
 use rlp::{RlpDecodable, RlpEncodable};
 
 #[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
-struct ThresholdRecipient {
-    t: u64,
-    recipients: Vec<Recipient>,
+pub struct ThresholdRecipient {
+    pub t: u16,
+    pub recipients: Vec<Recipient>,
 }
 
 const PLUGIN_RECIPIENT_HRP: &str = "age1threshold";
 
 impl ThresholdRecipient {
-    fn encode(self: &Self) -> String {
+    pub fn encode(self: &Self) -> String {
         bech32::encode(
             PLUGIN_RECIPIENT_HRP,
             rlp::encode(self).to_base32(),
@@ -19,7 +19,7 @@ impl ThresholdRecipient {
         )
         .unwrap()
     }
-    fn decode(s: &str) -> Result<Self, &str> {
+    pub fn decode(s: &str) -> Result<Self, &str> {
         let (hrp, b32data, _) = bech32::decode(s).or(Err("invalid bech32"))?;
         dbg!(&hrp);
         if hrp != PLUGIN_RECIPIENT_HRP {
@@ -27,6 +27,9 @@ impl ThresholdRecipient {
         }
         let data = Vec::<u8>::from_base32(b32data.as_slice()).or(Err("invalid base32"))?;
         rlp::decode(data.as_slice()).or(Err("RLP decoding error"))
+    }
+    pub fn from_rlp(data: &[u8]) -> Result<Self, &str> {
+        rlp::decode(data).or(Err("RLP decoding error"))
     }
 }
 
