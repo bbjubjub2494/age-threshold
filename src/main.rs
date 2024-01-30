@@ -8,12 +8,12 @@ use clap::{arg, command};
 use std::collections::HashMap;
 use std::io;
 
-use age_plugin_threshold::threshold_recipient::ThresholdRecipient;
-use age_plugin_threshold::crypto;
 use age_core::secrecy::ExposeSecret;
+use age_plugin_threshold::crypto;
+use age_plugin_threshold::threshold_recipient::ThresholdRecipient;
 
 #[derive(Debug, Default)]
-struct RecipientPlugin{
+struct RecipientPlugin {
     recipients: Vec<ThresholdRecipient>,
 }
 
