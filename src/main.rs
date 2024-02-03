@@ -7,6 +7,8 @@ use age_plugin::{
 use clap::{arg, command};
 use std::collections::HashMap;
 use std::io;
+use std::string::String;
+use std::sync::mpsc::{Receiver, Sender};
 
 use age_core::secrecy::Secret;
 use age_plugin_threshold::crypto;
@@ -17,21 +19,109 @@ struct RecipientPlugin {
     recipients: Vec<ThresholdRecipient>,
 }
 
-struct CallbacksAdapter<C: age_plugin::Callbacks<recipient::Error>>(C);
+pub enum CallbacksMethod {
+    DisplayMessage(String),
+    Confirm(String, String, Option<String>, Sender<Option<bool>>),
+    RequestPublicString(String, Sender<Option<String>>),
+    RequestPassphrase(String, Sender<Option<Secret<String>>>),
+}
 
-#[derive(Clone)]
-struct CallbacksStub;
-impl age::Callbacks for CallbacksStub {
-    // FIXME
-    fn display_message(&self, _: &str) {}
-    fn confirm(&self, _: &str, _: &str, _: Option<&str>) -> Option<bool> {
-        None
+// horrific hack to wrap age_plugin::Callbacks into age::Callbacks.
+// the latter requires a Send + Sync + 'static trait object, which is not possible to implement using the former.
+// instead, we keep the age::Callback in one thread and do RPC from another.
+static senders: std::sync::Mutex<Option<(Sender<CallbacksMethod>, Receiver<CallbacksMethod>)>> =
+    std::sync::Mutex::new(None);
+
+#[derive(Copy, Clone)]
+struct CallbacksAdapter {}
+
+impl CallbacksAdapter {
+    fn new() -> Self {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        senders.lock().unwrap().replace((sender, receiver));
+        Self {}
     }
-    fn request_public_string(&self, _: &str) -> Option<std::string::String> {
-        None
+
+    fn interact(&self, callbacks: &mut impl Callbacks<recipient::Error>) {
+        let (_, receiver) = senders.lock().unwrap().take().unwrap();
+        for method in receiver.iter() {
+            match method {
+                CallbacksMethod::DisplayMessage(msg) => match callbacks.message(&msg) {
+                    Ok(_) => (),
+                    Err(e) => eprintln!("Error: {:?}", e),
+                },
+                CallbacksMethod::Confirm(message, yes_string, no_string, result) => {
+                    match callbacks.confirm(&message, &yes_string, no_string.as_deref()) {
+                        Ok(Ok(r)) => result.send(Some(r)),
+                        e => {
+                            eprintln!("Error: {:?}", e);
+                            result.send(None)
+                        }
+                    };
+                }
+                CallbacksMethod::RequestPublicString(message, result) => {
+                    match callbacks.request_public(&message) {
+                        Ok(Ok(r)) => result.send(Some(r)),
+                        (e) => {
+                            eprintln!("Error: {:?}", e);
+                            result.send(None)
+                        }
+                    };
+                }
+                CallbacksMethod::RequestPassphrase(message, result) => {
+                    match callbacks.request_secret(&message) {
+                        Ok(Ok(r)) => result.send(Some(r)),
+                        (e) => {
+                            eprintln!("Error: {:?}", e);
+                            result.send(None)
+                        }
+                    };
+                }
+            }
+        }
     }
-    fn request_passphrase(&self, _: &str) -> Option<Secret<std::string::String>> {
-        None
+
+    fn reset(&self) {
+        // drop the sender so the receiver stops iterating
+        *senders.lock().unwrap() = None;
+    }
+}
+
+impl age::Callbacks for CallbacksAdapter {
+    fn display_message(&self, msg: &str) {
+        let (sender, _) = senders.lock().unwrap().take().unwrap();
+        sender
+            .send(CallbacksMethod::DisplayMessage(msg.into()))
+            .unwrap();
+    }
+    fn confirm(&self, message: &str, yes_string: &str, no_string: Option<&str>) -> Option<bool> {
+        let (sender, _) = senders.lock().unwrap().take().unwrap();
+        let (result, receiver) = std::sync::mpsc::channel();
+        sender
+            .send(CallbacksMethod::Confirm(
+                message.into(),
+                yes_string.into(),
+                no_string.map(|r| r.into()),
+                result,
+            ))
+            .unwrap();
+        receiver.recv().unwrap()
+    }
+    fn request_public_string(&self, msg: &str) -> Option<std::string::String> {
+        let (sender, _) = senders.lock().unwrap().take().unwrap();
+        let (result, receiver) = std::sync::mpsc::channel();
+        sender
+            .send(CallbacksMethod::RequestPublicString(msg.into(), result))
+            .unwrap();
+        receiver.recv().unwrap()
+    }
+    fn request_passphrase(&self, msg: &str) -> Option<Secret<std::string::String>> {
+        let (sender, _) = senders.lock().unwrap().take().unwrap();
+        let (result, receiver) = std::sync::mpsc::channel();
+        sender
+            .send(CallbacksMethod::RequestPassphrase(msg.into(), result))
+            .unwrap();
+        receiver.recv().unwrap()
     }
 }
 
@@ -65,7 +155,7 @@ impl RecipientPluginV1 for RecipientPlugin {
     fn wrap_file_keys(
         &mut self,
         file_keys: Vec<FileKey>,
-        callbacks: impl Callbacks<recipient::Error>,
+        mut callbacks: impl Callbacks<recipient::Error>,
     ) -> io::Result<Result<Vec<Vec<Stanza>>, Vec<recipient::Error>>> {
         Ok(Ok(self
             .recipients
@@ -75,16 +165,26 @@ impl RecipientPluginV1 for RecipientPlugin {
                     .iter()
                     .map(|fk| {
                         let shares = crypto::share_secret(fk, r.t.into(), r.recipients.len());
-                        let enc_shares = shares
-                            .iter()
-                            .zip(r.recipients.iter())
-                            .map(|(s, r)| {
-                                r.to_recipient(CallbacksStub {})
-                                    .unwrap() // FIXME: error handling
-                                    .wrap_file_key(&s.file_key)
-                                    .unwrap()
-                            })
-                            .collect::<Vec<_>>();
+                        let adapted_callbacks = CallbacksAdapter::new();
+                        let recipients = r.recipients.clone();
+                        let enc_shares = {
+                            let thread = std::thread::spawn(move || {
+                                let r = shares
+                                    .iter()
+                                    .zip(recipients.iter())
+                                    .map(|(s, r)| {
+                                        r.to_recipient(adapted_callbacks)
+                                            .unwrap() // FIXME: error handling
+                                            .wrap_file_key(&s.file_key)
+                                            .unwrap()
+                                    })
+                                    .collect::<Vec<_>>();
+                                adapted_callbacks.reset();
+                                r
+                            });
+                            adapted_callbacks.interact(&mut callbacks);
+                            thread.join().unwrap()
+                        };
                         Stanza {
                             tag: "threshold".into(),
                             args: vec![],

@@ -2,7 +2,7 @@ use bech32::{FromBase32, ToBase32, Variant};
 use rlp::{RlpDecodable, RlpEncodable};
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
+#[derive(Debug, PartialEq, Clone, RlpEncodable, RlpDecodable)]
 pub struct GenericRecipient {
     pub plugin: Option<String>,
     pub data: Vec<u8>,
@@ -72,28 +72,21 @@ mod tests {
     fn test_example_no_plugin() {
         let example = "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p";
         let expected = GenericRecipient {
-                plugin: None,
-                data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a")
-                    .to_vec()
-            };
-        assert_eq!(
-            GenericRecipient::decode(example),
-            Ok(expected)
-        );
+            plugin: None,
+            data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a").to_vec(),
+        };
         assert_eq!(expected.encode(), example);
+        assert_eq!(GenericRecipient::decode(example), Ok(expected));
     }
     #[test]
     fn test_example_plugin() {
         let example = "age1yubikey1q2w7u3vpya839jxxuq8g0sedh3d740d4xvn639sqhr95ejj8vu3hyfumptt";
         let expected = GenericRecipient {
-                plugin: Some("yubikey".to_string()),
-                data: hex!("029dee4581274f12c8c6e00e87c32dbc5beabdb53327a89600b8cb4cca47672372")
-                    .to_vec()
-            };
-        assert_eq!(
-            GenericRecipient::decode(example),
-            Ok(expected)
-        );
+            plugin: Some("yubikey".to_string()),
+            data: hex!("029dee4581274f12c8c6e00e87c32dbc5beabdb53327a89600b8cb4cca47672372")
+                .to_vec(),
+        };
         assert_eq!(expected.encode(), example);
+        assert_eq!(GenericRecipient::decode(example), Ok(expected));
     }
 }

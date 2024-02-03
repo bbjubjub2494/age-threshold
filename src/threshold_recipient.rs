@@ -39,31 +39,26 @@ mod tests {
     use hex_literal::hex;
 
     #[test]
-    fn test_example_encode() {
-        let example = ThresholdRecipient {
-            t: 1,
-            recipients: vec![GenericRecipient {
-                plugin: None,
-                data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a")
-                    .to_vec(),
-            }],
-        };
-        assert_eq!(
-            example.encode(),
-            "age1threshold17yq7lmkqasrcrc30tezgrf2zs85grhyp3e6n5s39rcgppqwv0xqarqvjsxecracutvwgr9ty2gycrxt6ltfyua"
-        );
-    }
-    #[test]
-    fn test_example_decode() {
-        let example = "age1threshold17yq7lmkqasrcrc30tezgrf2zs85grhyp3e6n5s39rcgppqwv0xqarqvjsxecracutvwgr9ty2gycrxt6ltfyua";
+    fn test_example() {
+        let example = "age1threshold1lpcqr7rdamqwcpupugh4u3yp54pgr6ypmjqcuaf6ggj3uyqss8x8nqw3sxfgrvup7uw9k8ypj4j9yzvpn9a0s0xgsauh2cnfddjhnuszsxwcrmj9sxqjwncjs8ygr35puq8grpupcvkcr0zms84gr0vpk5ej0qdgsxtgpqdcs895eqw2ganjxus8cuy3y";
         let expected = ThresholdRecipient {
             t: 1,
-            recipients: vec![GenericRecipient {
-                plugin: None,
-                data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a")
+            recipients: vec![
+                GenericRecipient {
+                    plugin: None,
+                    data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a")
+                        .to_vec(),
+                },
+                GenericRecipient {
+                    plugin: Some("yubikey".to_string()),
+                    data: hex!(
+                        "029dee4581274f12c8c6e00e87c32dbc5beabdb53327a89600b8cb4cca47672372"
+                    )
                     .to_vec(),
-            }],
+                },
+            ],
         };
-        assert_eq!(ThresholdRecipient::decode(example), Ok(expected),);
+        assert_eq!(expected.encode(), example);
+        assert_eq!(ThresholdRecipient::decode(example), Ok(expected));
     }
 }
