@@ -1,4 +1,4 @@
-use age_core::format::{FileKey, Stanza};
+use age_core::format::{FileKey, Stanza, FILE_KEY_BYTES};
 use age_plugin::{
     identity::{self, IdentityPluginV1},
     recipient::{self, RecipientPluginV1},
@@ -13,6 +13,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use age_core::secrecy::Secret;
 use age_plugin_threshold::crypto;
 use age_plugin_threshold::threshold_recipient::ThresholdRecipient;
+use rlp::{RlpDecodable, RlpEncodable};
 
 #[derive(Debug, Default)]
 struct RecipientPlugin {
@@ -125,6 +126,19 @@ impl age::Callbacks for CallbacksAdapter {
     }
 }
 
+#[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
+struct EncShare {
+    index: u8,
+    //data: [u8; FILE_KEY_BYTES],
+    stanzas: Vec<Stanza>,
+}
+
+#[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
+struct StanzaBody {
+    recipient: ThresholdRecipient,
+    enc_shares: Vec<EncShare>,
+}
+
 impl RecipientPluginV1 for RecipientPlugin {
     fn add_recipient(
         &mut self,
@@ -172,11 +186,13 @@ impl RecipientPluginV1 for RecipientPlugin {
                                 let r = shares
                                     .iter()
                                     .zip(recipients.iter())
-                                    .map(|(s, r)| {
-                                        r.to_recipient(adapted_callbacks)
+                                    .map(|(s, r)| EncShare {
+                                        index: s.index,
+                                        stanzas: r
+                                            .to_recipient(adapted_callbacks)
                                             .unwrap() // FIXME: error handling
                                             .wrap_file_key(&s.file_key)
-                                            .unwrap()
+                                            .unwrap(),
                                     })
                                     .collect::<Vec<_>>();
                                 adapted_callbacks.reset();
@@ -188,13 +204,10 @@ impl RecipientPluginV1 for RecipientPlugin {
                         Stanza {
                             tag: "threshold".into(),
                             args: vec![],
-                            body: rlp::encode(
-                                &enc_shares
-                                    .iter()
-                                    .flatten()
-                                    .flat_map(|s| s.body.clone()) // FIXME: some serialization?
-                                    .collect::<Vec<_>>(),
-                            )
+                            body: rlp::encode(&StanzaBody {
+                                recipient: r.clone(),
+                                enc_shares: enc_shares,
+                            })
                             .to_vec(),
                         }
                     })
@@ -211,10 +224,13 @@ impl IdentityPluginV1 for IdentityPlugin {
     fn add_identity(
         &mut self,
         _index: usize,
-        _plugin_name: &str,
+        plugin_name: &str,
         _bytes: &[u8],
     ) -> Result<(), identity::Error> {
-        todo!()
+        match plugin_name {
+            "threshold" => Ok(()),
+            _ => todo!("digest secret keys"),
+        }
     }
 
     fn unwrap_file_keys(

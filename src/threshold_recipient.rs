@@ -2,7 +2,7 @@ use crate::generic_recipient::GenericRecipient;
 use bech32::{self, FromBase32, ToBase32, Variant};
 use rlp::{RlpDecodable, RlpEncodable};
 
-#[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
+#[derive(Clone, Debug, PartialEq, RlpEncodable, RlpDecodable)]
 pub struct ThresholdRecipient {
     pub t: u16,
     pub recipients: Vec<GenericRecipient>,
