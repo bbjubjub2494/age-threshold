@@ -1,19 +1,23 @@
 use age_core::format::{FileKey, Stanza, FILE_KEY_BYTES};
+use age::Identity;
 use age_plugin::{
     identity::{self, IdentityPluginV1},
     recipient::{self, RecipientPluginV1},
     run_state_machine, Callbacks,
 };
-use clap::{arg, command};
+use clap::{arg, command, Command};
 use std::collections::HashMap;
 use std::io;
 use std::string::String;
 use std::sync::mpsc::{Receiver, Sender};
+use std::str::FromStr;
 
 use age_core::secrecy::Secret;
 use age_plugin_threshold::crypto;
 use age_plugin_threshold::threshold_recipient::ThresholdRecipient;
-use rlp::{RlpDecodable, RlpEncodable};
+use age_plugin_threshold::threshold_identity::ThresholdIdentity;
+use age_plugin_threshold::generic_identity::GenericIdentity;
+use rlp::{RlpDecodable, RlpEncodable, RlpStream, Decodable, Encodable};
 
 #[derive(Debug, Default)]
 struct RecipientPlugin {
@@ -130,7 +134,54 @@ impl age::Callbacks for CallbacksAdapter {
 struct EncShare {
     index: u8,
     //data: [u8; FILE_KEY_BYTES],
-    stanzas: Vec<Stanza>,
+    stanzas: Vec<EncodableStanza>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct EncodableStanza{
+    tag: String,
+    args: Vec<String>,
+    body: Vec<u8>,
+}
+
+impl EncodableStanza {
+    fn from(s: &Stanza) -> Self {
+        Self {
+            tag: s.tag.clone(),
+            args: s.args.clone(),
+            body: s.body.clone(),
+        }
+    }
+
+    fn into(&self) -> Stanza {
+        Stanza {
+            tag: self.tag,
+            args: self.args,
+            body: self.body,
+        }
+    }
+}
+
+impl Encodable for EncodableStanza {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(3);
+        s.append(&self.tag);
+        s.begin_list(self.args.len());
+        for a in &self.args {
+            s.append(a);
+        }
+        s.append(&self.body);
+    }
+}
+
+impl Decodable for EncodableStanza {
+    fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
+        Ok(Self {
+            tag: rlp.at(0)?.as_val()?,
+            args: rlp.at(1)?.as_list()?,
+            body: rlp.at(2)?.as_val()?,
+        })
+    }
 }
 
 #[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
@@ -174,7 +225,7 @@ impl RecipientPluginV1 for RecipientPlugin {
         Ok(Ok(self
             .recipients
             .iter()
-            .map(|r| {
+            .map(|r|
                 file_keys
                     .iter()
                     .map(|fk| {
@@ -192,7 +243,8 @@ impl RecipientPluginV1 for RecipientPlugin {
                                             .to_recipient(adapted_callbacks)
                                             .unwrap() // FIXME: error handling
                                             .wrap_file_key(&s.file_key)
-                                            .unwrap(),
+                                            .unwrap()
+                                            .iter().map(|s| EncodableStanza::from(s)).collect(),
                                     })
                                     .collect::<Vec<_>>();
                                 adapted_callbacks.reset();
@@ -212,39 +264,70 @@ impl RecipientPluginV1 for RecipientPlugin {
                         }
                     })
                     .collect()
-            })
+            )
             .collect()))
     }
 }
 
 #[derive(Debug, Default)]
-struct IdentityPlugin {}
+struct IdentityPlugin {
+    identities: Vec<GenericIdentity>,
+}
 
 impl IdentityPluginV1 for IdentityPlugin {
     fn add_identity(
         &mut self,
         _index: usize,
         plugin_name: &str,
-        _bytes: &[u8],
+        bytes: &[u8],
     ) -> Result<(), identity::Error> {
-        match plugin_name {
-            "threshold" => Ok(()),
-            _ => todo!("digest secret keys"),
+        if plugin_name != "threshold" {
+            panic!("not age-plugin-threshold");
         }
+        let identity = ThresholdIdentity::from_rlp(bytes).unwrap();
+        self.identities.push(identity.inner_identity);
+        Ok(())
     }
 
     fn unwrap_file_keys(
         &mut self,
-        _file_keys: Vec<Vec<Stanza>>,
-        _callbacks: impl Callbacks<identity::Error>,
+        file_keys: Vec<Vec<Stanza>>,
+        callbacks: impl Callbacks<identity::Error>,
     ) -> io::Result<HashMap<usize, Result<FileKey, Vec<identity::Error>>>> {
-        todo!()
+        for fk in file_keys {
+            for stanza in fk {
+                if stanza.tag != "threshold" {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "not a threshold stanza",
+                    ));
+                }
+                let body = rlp::decode::<StanzaBody>(&stanza.body).unwrap();
+                for s in body.enc_shares {
+                                for s in &s.stanzas {
+                                    for i in self.identities {
+                                        if i.plugin == None && s.tag == "" {
+                                            let i = age::x25519::Identity::from_str(&i.encode()).unwrap();
+                                            match i.unwrap_stanza(&s.into()) {
+                                                case Some(r) => break r.unwrap();
+                                                case None => continue;
+                                            }
+                                        } else {
+                                            todo!();
+                                        }
+                                    }
+                                }
+                        }
+                    }
+            }
     }
 }
 
 fn main() -> io::Result<()> {
     let cmd = command!()
         .arg(arg!(--"age-plugin" <state_machine> "run the given age plugin state machine"))
+        .subcommand(Command::new("wrap").long_flag("warp").about("wrap an identity")
+        .arg(arg!(<identity> "identity to wrap")))
         .get_matches();
 
     if let Some(state_machine) = cmd.get_one::<String>("age-plugin") {
@@ -259,6 +342,19 @@ fn main() -> io::Result<()> {
 
     // Here you can assume the binary is being run directly by a user,
     // and perform administrative tasks like generating keys.
+
+    match cmd.subcommand() {
+        Some(("wrap", subcmd)) => {
+            let identity = subcmd.get_one::<String>("identity").unwrap();
+            let inner_identity = GenericIdentity::decode(&identity).unwrap();
+            let identity = ThresholdIdentity{inner_identity};
+            println!("{}", identity.encode());
+        }
+        _ => {
+            eprintln!("No subcommand given");
+            std::process::exit(1);
+        }
+    }
 
     Ok(())
 }
