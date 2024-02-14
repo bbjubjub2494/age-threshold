@@ -1,4 +1,5 @@
 use age_core::format::{FileKey, Stanza, FILE_KEY_BYTES};
+use age_core::secrecy::ExposeSecret;
 use age::Identity;
 use age_plugin::{
     identity::{self, IdentityPluginV1},
@@ -13,10 +14,11 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::str::FromStr;
 
 use age_core::secrecy::Secret;
-use age_plugin_threshold::crypto;
+use age_plugin_threshold::crypto::{self,SecretShare};
 use age_plugin_threshold::threshold_recipient::ThresholdRecipient;
 use age_plugin_threshold::threshold_identity::ThresholdIdentity;
 use age_plugin_threshold::generic_identity::GenericIdentity;
+use age_plugin_threshold::generic_recipient::GenericRecipient;
 use rlp::{RlpDecodable, RlpEncodable, RlpStream, Decodable, Encodable};
 
 #[derive(Debug, Default)]
@@ -155,9 +157,9 @@ impl EncodableStanza {
 
     fn into(&self) -> Stanza {
         Stanza {
-            tag: self.tag,
-            args: self.args,
-            body: self.body,
+            tag: self.tag.clone(),
+            args: self.args.clone(),
+            body: self.body.clone(),
         }
     }
 }
@@ -294,8 +296,9 @@ impl IdentityPluginV1 for IdentityPlugin {
         file_keys: Vec<Vec<Stanza>>,
         callbacks: impl Callbacks<identity::Error>,
     ) -> io::Result<HashMap<usize, Result<FileKey, Vec<identity::Error>>>> {
-        for fk in file_keys {
-            for stanza in fk {
+                let mut r = HashMap::new();
+        for (i, efk) in file_keys.iter().enumerate() {
+            for stanza in efk {
                 if stanza.tag != "threshold" {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidData,
@@ -303,23 +306,39 @@ impl IdentityPluginV1 for IdentityPlugin {
                     ));
                 }
                 let body = rlp::decode::<StanzaBody>(&stanza.body).unwrap();
-                for s in body.enc_shares {
+                let mut shares = vec![];
+                for (j,s) in body.enc_shares.iter().enumerate() {
                                 for s in &s.stanzas {
-                                    for i in self.identities {
-                                        if i.plugin == None && s.tag == "" {
+                                    dbg!(&s);
+                                    for i in &self.identities {
+                                        dbg!(&i);
+                                        match (&i.plugin, s.tag.as_str()) {
+                                        (None, "X25519") => {
+                                            // built-in identity
                                             let i = age::x25519::Identity::from_str(&i.encode()).unwrap();
                                             match i.unwrap_stanza(&s.into()) {
-                                                case Some(r) => break r.unwrap();
-                                                case None => continue;
+                                                Some(Ok(r)) => { shares.push(SecretShare{index: j.try_into().unwrap(),file_key:r}); break; }
+                                                Some(Err(e)) => panic!("{}", e),
+                                                None => ()
                                             }
-                                        } else {
+                                        }
+                                        (Some(plugin), tag) if plugin ==tag =>{
                                             todo!();
+                                        } 
+                                        _ => {
+                                            // ignore
                                         }
                                     }
                                 }
                         }
+                }
+                dbg!(&shares);
+                let fk = crypto::reconstruct_secret(&shares[..]);
+            r.insert(i, Ok(fk));
+                break; // todo: handle multiple stanzas per file
                     }
             }
+        Ok(r)
     }
 }
 
@@ -327,7 +346,10 @@ fn main() -> io::Result<()> {
     let cmd = command!()
         .arg(arg!(--"age-plugin" <state_machine> "run the given age plugin state machine"))
         .subcommand(Command::new("wrap").long_flag("warp").about("wrap an identity")
-        .arg(arg!(<identity> "identity to wrap")))
+                    .arg(arg!(<identity> "identity to wrap")))
+        .subcommand(Command::new("build-recipient").about("prepare a threshold recipient")
+                    .arg(arg!(<recipients> "recipients"))
+                    .arg(arg!(-t --threshold <threshold> "threshold")))
         .get_matches();
 
     if let Some(state_machine) = cmd.get_one::<String>("age-plugin") {
@@ -347,8 +369,15 @@ fn main() -> io::Result<()> {
         Some(("wrap", subcmd)) => {
             let identity = subcmd.get_one::<String>("identity").unwrap();
             let inner_identity = GenericIdentity::decode(&identity).unwrap();
+            println!("# wraps {}", inner_identity.encode());
             let identity = ThresholdIdentity{inner_identity};
             println!("{}", identity.encode());
+        }
+        Some(("build-recipient", subcmd)) => {
+            let recipients = subcmd.get_many::<String>("recipients").unwrap();
+            let t = 1u16; // TODO
+            let recipient = ThresholdRecipient{t, recipients: recipients.map(|r| GenericRecipient::decode(r.as_str()).unwrap()).collect()};
+            println!("{}", recipient.encode());
         }
         _ => {
             eprintln!("No subcommand given");

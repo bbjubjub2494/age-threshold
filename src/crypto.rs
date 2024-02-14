@@ -2,9 +2,20 @@ use age_core::format::{FileKey, FILE_KEY_BYTES};
 use age_core::secrecy::{ExposeSecret, Secret, Zeroize};
 use gf256::shamir::shamir;
 
+use std::fmt;
+
 pub struct SecretShare {
     pub index: u8,
     pub file_key: FileKey,
+}
+
+impl fmt::Debug for SecretShare {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SecretShare")
+            .field("index", &self.index)
+            .field("file_key", &self.file_key.expose_secret()) // FIXME: dont
+            .finish()
+    }
 }
 
 impl ExposeSecret<[u8; FILE_KEY_BYTES]> for SecretShare {
@@ -33,9 +44,11 @@ pub fn share_secret(fk: &FileKey, t: usize, n: usize) -> Vec<SecretShare> {
 }
 
 pub fn reconstruct_secret(shares: &[SecretShare]) -> FileKey {
+    assert!(shares.len() > 0);
     let bufs = shares
         .iter()
         .map(|share| {
+            dbg!(share);
             let mut buf = [0u8; FILE_KEY_BYTES + 1];
             buf[0] = share.index;
             buf[1..].copy_from_slice(share.file_key.expose_secret());

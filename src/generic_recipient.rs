@@ -19,7 +19,7 @@ impl GenericRecipient {
         };
         bech32::encode(&hrp, self.data.to_base32(), Variant::Bech32).unwrap()
     }
-    fn decode(s: &str) -> Result<Self, &str> {
+    pub fn decode(s: &str) -> Result<Self, &str> {
         let (hrp, data, _) = bech32::decode(s).or(Err("invalid bech32"))?;
         dbg!(&hrp);
         let plugin = if hrp == "age" {
