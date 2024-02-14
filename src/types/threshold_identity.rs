@@ -1,7 +1,12 @@
 use bech32::{self, FromBase32, ToBase32, Variant};
 use rlp::{RlpDecodable, RlpEncodable};
-use crate::generic_identity::GenericIdentity;
+use crate::types::GenericIdentity;
 
+/// Wrap an arbitrary Age identity so it can be passed to the threshold plugin.
+///
+/// Inner identities do not need to have any special properties. All this wrapper does is change
+/// the human-readable part of the bech32 encoding to `AGE-PLUGIN-THRESHOLD-`. This ensures that
+/// Age invokes the plugin and passes the identity to it.
 #[derive(Clone, Debug, PartialEq, RlpEncodable, RlpDecodable)]
 pub struct ThresholdIdentity {
     pub inner_identity: GenericIdentity
@@ -9,9 +14,8 @@ pub struct ThresholdIdentity {
 
 const PLUGIN_IDENTITY_HRP: &str = "age-plugin-threshold-";
 
-// FIXME: probably don't need RLP?
 impl ThresholdIdentity {
-    pub fn encode(self: &Self) -> String {
+    pub fn to_bech32(self: &Self) -> String {
         bech32::encode(
             PLUGIN_IDENTITY_HRP,
             rlp::encode(self).to_base32(),
@@ -20,16 +24,13 @@ impl ThresholdIdentity {
         .unwrap()
         .to_uppercase()
     }
-    pub fn decode(s: &str) -> Result<Self, &str> {
+    pub fn from_bech32(s: &str) -> Result<Self, &str> {
         let (hrp, b32data, _) = bech32::decode(s).or(Err("invalid bech32"))?;
         if hrp != PLUGIN_IDENTITY_HRP {
             Err("invalid HRP")?
         }
         let data = Vec::<u8>::from_base32(b32data.as_slice()).or(Err("invalid base32"))?;
         rlp::decode(data.as_slice()).or(Err("RLP decoding error"))
-    }
-    pub fn from_rlp(data: &[u8]) -> Result<Self, &str> {
-        rlp::decode(data).or(Err("RLP decoding error"))
     }
 }
 
@@ -45,7 +46,7 @@ mod tests {
             plugin: None,
             data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a").to_vec(),
         }};
-        assert_eq!(expected.encode(), example);
-        assert_eq!(ThresholdIdentity::decode(example), Ok(expected));
+        assert_eq!(expected.to_bech32(), example);
+        assert_eq!(ThresholdIdentity::from_bech32(example), Ok(expected));
     }
 }

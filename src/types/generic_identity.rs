@@ -1,6 +1,7 @@
 use bech32::{self, FromBase32, ToBase32, Variant};
 use rlp::{RlpDecodable, RlpEncodable};
 
+/// Represents any Age identity, whether native or plugin.
 #[derive(Clone, Debug, PartialEq, RlpEncodable, RlpDecodable)]
 pub struct GenericIdentity {
     pub plugin: Option<String>,
@@ -11,7 +12,7 @@ const NATIVE_IDENTITY_HRP: &str = "age-secret-key-";
 const PLUGIN_IDENTITY_HRP_PREFIX: &str = "age-plugin-";
 
 impl GenericIdentity {
-    pub fn encode(self: &Self) -> String {
+    pub fn to_bech32(self: &Self) -> String {
         let hrp = match self.plugin {
             None => NATIVE_IDENTITY_HRP.to_string(),
             Some(ref plugin) => PLUGIN_IDENTITY_HRP_PREFIX.to_string() + plugin,
@@ -24,7 +25,7 @@ impl GenericIdentity {
         .unwrap()
         .to_uppercase()
     }
-    pub fn decode(s: &str) -> Result<Self, &str> {
+    pub fn from_bech32(s: &str) -> Result<Self, &str> {
         let (hrp, b32data, _) = bech32::decode(s).or(Err("invalid bech32"))?;
         let plugin = if hrp == NATIVE_IDENTITY_HRP {
             None

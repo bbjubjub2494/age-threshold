@@ -2,6 +2,7 @@ use bech32::{FromBase32, ToBase32, Variant};
 use rlp::{RlpDecodable, RlpEncodable};
 use std::str::FromStr;
 
+/// Represents any Age recipient, whether native or plugin.
 #[derive(Debug, PartialEq, Clone, RlpEncodable, RlpDecodable)]
 pub struct GenericRecipient {
     pub plugin: Option<String>,
@@ -12,16 +13,15 @@ const PLUGIN_RECIPIENT_PREFIX: &str = "age1";
 
 impl GenericRecipient {
     // needed for conversions
-    fn encode(self: &Self) -> String {
+    pub fn to_bech32(self: &Self) -> String {
         let hrp = match self.plugin {
             None => "age".to_string(),
             Some(ref plugin) => "age1".to_string() + plugin,
         };
         bech32::encode(&hrp, self.data.to_base32(), Variant::Bech32).unwrap()
     }
-    pub fn decode(s: &str) -> Result<Self, &str> {
+    pub fn from_bech32(s: &str) -> Result<Self, &str> {
         let (hrp, data, _) = bech32::decode(s).or(Err("invalid bech32"))?;
-        dbg!(&hrp);
         let plugin = if hrp == "age" {
             None
         } else if hrp.starts_with(PLUGIN_RECIPIENT_PREFIX) {
@@ -43,12 +43,12 @@ impl GenericRecipient {
     ) -> Result<Box<dyn age::Recipient>, String> {
         match self.plugin {
             None => Ok(Box::new(
-                age::x25519::Recipient::from_str(&self.encode()).unwrap(),
+                age::x25519::Recipient::from_str(&self.to_bech32()).unwrap(),
             )),
             // TODO: ssh
             Some(ref plugin_name) => match age::plugin::RecipientPluginV1::new(
                 plugin_name,
-                &[age::plugin::Recipient::from_str(&self.encode()).unwrap()],
+                &[age::plugin::Recipient::from_str(&self.to_bech32()).unwrap()],
                 &[],
                 callbacks,
             ) {
@@ -75,8 +75,8 @@ mod tests {
             plugin: None,
             data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a").to_vec(),
         };
-        assert_eq!(expected.encode(), example);
-        assert_eq!(GenericRecipient::decode(example), Ok(expected));
+        assert_eq!(expected.to_bech32(), example);
+        assert_eq!(GenericRecipient::from_bech32(example), Ok(expected));
     }
     #[test]
     fn test_example_plugin() {
@@ -86,7 +86,7 @@ mod tests {
             data: hex!("029dee4581274f12c8c6e00e87c32dbc5beabdb53327a89600b8cb4cca47672372")
                 .to_vec(),
         };
-        assert_eq!(expected.encode(), example);
-        assert_eq!(GenericRecipient::decode(example), Ok(expected));
+        assert_eq!(expected.to_bech32(), example);
+        assert_eq!(GenericRecipient::from_bech32(example), Ok(expected));
     }
 }

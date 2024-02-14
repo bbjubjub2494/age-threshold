@@ -1,7 +1,8 @@
-use crate::generic_recipient::GenericRecipient;
+use crate::types::GenericRecipient;
 use bech32::{self, FromBase32, ToBase32, Variant};
 use rlp::{RlpDecodable, RlpEncodable};
 
+/// An age recipient that encodes a target for threshold encryption.
 #[derive(Clone, Debug, PartialEq, RlpEncodable, RlpDecodable)]
 pub struct ThresholdRecipient {
     pub t: u16,
@@ -11,7 +12,7 @@ pub struct ThresholdRecipient {
 const PLUGIN_RECIPIENT_HRP: &str = "age1threshold";
 
 impl ThresholdRecipient {
-    pub fn encode(self: &Self) -> String {
+    pub fn to_bech32(self: &Self) -> String {
         bech32::encode(
             PLUGIN_RECIPIENT_HRP,
             rlp::encode(self).to_base32(),
@@ -19,7 +20,7 @@ impl ThresholdRecipient {
         )
         .unwrap()
     }
-    pub fn decode(s: &str) -> Result<Self, &str> {
+    pub fn from_bech32(s: &str) -> Result<Self, &str> {
         let (hrp, b32data, _) = bech32::decode(s).or(Err("invalid bech32"))?;
         dbg!(&hrp);
         if hrp != PLUGIN_RECIPIENT_HRP {
@@ -27,9 +28,6 @@ impl ThresholdRecipient {
         }
         let data = Vec::<u8>::from_base32(b32data.as_slice()).or(Err("invalid base32"))?;
         rlp::decode(data.as_slice()).or(Err("RLP decoding error"))
-    }
-    pub fn from_rlp(data: &[u8]) -> Result<Self, &str> {
-        rlp::decode(data).or(Err("RLP decoding error"))
     }
 }
 
@@ -58,7 +56,7 @@ mod tests {
                 },
             ],
         };
-        assert_eq!(expected.encode(), example);
-        assert_eq!(ThresholdRecipient::decode(example), Ok(expected));
+        assert_eq!(expected.to_bech32(), example);
+        assert_eq!(ThresholdRecipient::from_bech32(example), Ok(expected));
     }
 }

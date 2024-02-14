@@ -1,5 +1,5 @@
-use age_core::format::{FileKey, Stanza, FILE_KEY_BYTES};
-use age_core::secrecy::ExposeSecret;
+use age_core::format::{FileKey, Stanza};
+
 use age::Identity;
 use age_plugin::{
     identity::{self, IdentityPluginV1},
@@ -15,11 +15,12 @@ use std::str::FromStr;
 
 use age_core::secrecy::Secret;
 use age_plugin_threshold::crypto::{self,SecretShare};
-use age_plugin_threshold::threshold_recipient::ThresholdRecipient;
-use age_plugin_threshold::threshold_identity::ThresholdIdentity;
-use age_plugin_threshold::generic_identity::GenericIdentity;
-use age_plugin_threshold::generic_recipient::GenericRecipient;
 use rlp::{RlpDecodable, RlpEncodable, RlpStream, Decodable, Encodable};
+
+use age_plugin_threshold::types::ThresholdRecipient;
+use age_plugin_threshold::types::ThresholdIdentity;
+use age_plugin_threshold::types::GenericRecipient;
+use age_plugin_threshold::types::GenericIdentity;
 
 #[derive(Debug, Default)]
 struct RecipientPlugin {
@@ -69,7 +70,7 @@ impl CallbacksAdapter {
                 CallbacksMethod::RequestPublicString(message, result) => {
                     match callbacks.request_public(&message) {
                         Ok(Ok(r)) => result.send(Some(r)),
-                        (e) => {
+                        e => {
                             eprintln!("Error: {:?}", e);
                             result.send(None)
                         }
@@ -78,7 +79,7 @@ impl CallbacksAdapter {
                 CallbacksMethod::RequestPassphrase(message, result) => {
                     match callbacks.request_secret(&message) {
                         Ok(Ok(r)) => result.send(Some(r)),
-                        (e) => {
+                        e => {
                             eprintln!("Error: {:?}", e);
                             result.send(None)
                         }
@@ -206,7 +207,7 @@ impl RecipientPluginV1 for RecipientPlugin {
             });
         }
         self.recipients
-            .push(ThresholdRecipient::from_rlp(bytes).unwrap());
+            .push(rlp::decode(bytes).unwrap());
         Ok(())
     }
 
@@ -286,7 +287,7 @@ impl IdentityPluginV1 for IdentityPlugin {
         if plugin_name != "threshold" {
             panic!("not age-plugin-threshold");
         }
-        let identity = ThresholdIdentity::from_rlp(bytes).unwrap();
+        let identity: ThresholdIdentity = rlp::decode(bytes).unwrap();
         self.identities.push(identity.inner_identity);
         Ok(())
     }
@@ -315,7 +316,7 @@ impl IdentityPluginV1 for IdentityPlugin {
                                         match (&i.plugin, s.tag.as_str()) {
                                         (None, "X25519") => {
                                             // built-in identity
-                                            let i = age::x25519::Identity::from_str(&i.encode()).unwrap();
+                                            let i = age::x25519::Identity::from_str(&i.to_bech32()).unwrap();
                                             match i.unwrap_stanza(&s.into()) {
                                                 Some(Ok(r)) => { shares.push(SecretShare{index: j.try_into().unwrap(),file_key:r}); break; }
                                                 Some(Err(e)) => panic!("{}", e),
@@ -368,16 +369,16 @@ fn main() -> io::Result<()> {
     match cmd.subcommand() {
         Some(("wrap", subcmd)) => {
             let identity = subcmd.get_one::<String>("identity").unwrap();
-            let inner_identity = GenericIdentity::decode(&identity).unwrap();
-            println!("# wraps {}", inner_identity.encode());
+            let inner_identity = GenericIdentity::from_bech32(&identity).unwrap();
+            println!("# wraps {}", inner_identity.to_bech32());
             let identity = ThresholdIdentity{inner_identity};
-            println!("{}", identity.encode());
+            println!("{}", identity.to_bech32());
         }
         Some(("build-recipient", subcmd)) => {
             let recipients = subcmd.get_many::<String>("recipients").unwrap();
             let t = 1u16; // TODO
-            let recipient = ThresholdRecipient{t, recipients: recipients.map(|r| GenericRecipient::decode(r.as_str()).unwrap()).collect()};
-            println!("{}", recipient.encode());
+            let recipient = ThresholdRecipient{t, recipients: recipients.map(|r| GenericRecipient::from_bech32(r.as_str()).unwrap()).collect()};
+            println!("{}", recipient.to_bech32());
         }
         _ => {
             eprintln!("No subcommand given");
