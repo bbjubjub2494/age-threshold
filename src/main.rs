@@ -9,18 +9,18 @@ use age_plugin::{
 use clap::{arg, command, Command};
 use std::collections::HashMap;
 use std::io;
+use std::str::FromStr;
 use std::string::String;
 use std::sync::mpsc::{Receiver, Sender};
-use std::str::FromStr;
 
 use age_core::secrecy::Secret;
-use age_plugin_threshold::crypto::{self,SecretShare};
-use rlp::{RlpDecodable, RlpEncodable, RlpStream, Decodable, Encodable};
+use age_plugin_threshold::crypto::{self, SecretShare};
+use rlp::{Decodable, Encodable, RlpDecodable, RlpEncodable, RlpStream};
 
-use age_plugin_threshold::types::ThresholdRecipient;
-use age_plugin_threshold::types::ThresholdIdentity;
-use age_plugin_threshold::types::GenericRecipient;
 use age_plugin_threshold::types::GenericIdentity;
+use age_plugin_threshold::types::GenericRecipient;
+use age_plugin_threshold::types::ThresholdIdentity;
+use age_plugin_threshold::types::ThresholdRecipient;
 
 #[derive(Debug, Default)]
 struct RecipientPlugin {
@@ -141,7 +141,7 @@ struct EncShare {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-struct EncodableStanza{
+struct EncodableStanza {
     tag: String,
     args: Vec<String>,
     body: Vec<u8>,
@@ -206,8 +206,7 @@ impl RecipientPluginV1 for RecipientPlugin {
                 message: "not age-plugin-threshold".into(),
             });
         }
-        self.recipients
-            .push(rlp::decode(bytes).unwrap());
+        self.recipients.push(rlp::decode(bytes).unwrap());
         Ok(())
     }
 
@@ -228,7 +227,7 @@ impl RecipientPluginV1 for RecipientPlugin {
         Ok(Ok(self
             .recipients
             .iter()
-            .map(|r|
+            .map(|r| {
                 file_keys
                     .iter()
                     .map(|fk| {
@@ -247,7 +246,9 @@ impl RecipientPluginV1 for RecipientPlugin {
                                             .unwrap() // FIXME: error handling
                                             .wrap_file_key(&s.file_key)
                                             .unwrap()
-                                            .iter().map(|s| EncodableStanza::from(s)).collect(),
+                                            .iter()
+                                            .map(|s| EncodableStanza::from(s))
+                                            .collect(),
                                     })
                                     .collect::<Vec<_>>();
                                 adapted_callbacks.reset();
@@ -267,7 +268,7 @@ impl RecipientPluginV1 for RecipientPlugin {
                         }
                     })
                     .collect()
-            )
+            })
             .collect()))
     }
 }
@@ -297,7 +298,7 @@ impl IdentityPluginV1 for IdentityPlugin {
         file_keys: Vec<Vec<Stanza>>,
         callbacks: impl Callbacks<identity::Error>,
     ) -> io::Result<HashMap<usize, Result<FileKey, Vec<identity::Error>>>> {
-                let mut r = HashMap::new();
+        let mut r = HashMap::new();
         for (i, efk) in file_keys.iter().enumerate() {
             for stanza in efk {
                 if stanza.tag != "threshold" {
@@ -308,37 +309,44 @@ impl IdentityPluginV1 for IdentityPlugin {
                 }
                 let body = rlp::decode::<StanzaBody>(&stanza.body).unwrap();
                 let mut shares = vec![];
-                for (j,s) in body.enc_shares.iter().enumerate() {
-                                for s in &s.stanzas {
-                                    dbg!(&s);
-                                    for i in &self.identities {
-                                        dbg!(&i);
-                                        match (&i.plugin, s.tag.as_str()) {
-                                        (None, "X25519") => {
-                                            // built-in identity
-                                            let i = age::x25519::Identity::from_str(&i.to_bech32()).unwrap();
-                                            match i.unwrap_stanza(&s.into()) {
-                                                Some(Ok(r)) => { shares.push(SecretShare{index: j.try_into().unwrap(),file_key:r}); break; }
-                                                Some(Err(e)) => panic!("{}", e),
-                                                None => ()
-                                            }
+                for (j, s) in body.enc_shares.iter().enumerate() {
+                    for s in &s.stanzas {
+                        dbg!(&s);
+                        for i in &self.identities {
+                            dbg!(&i);
+                            match (&i.plugin, s.tag.as_str()) {
+                                (None, "X25519") => {
+                                    // built-in identity
+                                    let i =
+                                        age::x25519::Identity::from_str(&i.to_bech32()).unwrap();
+                                    match i.unwrap_stanza(&s.into()) {
+                                        Some(Ok(r)) => {
+                                            shares.push(SecretShare {
+                                                index: j.try_into().unwrap(),
+                                                file_key: r,
+                                            });
+                                            break;
                                         }
-                                        (Some(plugin), tag) if plugin ==tag =>{
-                                            todo!();
-                                        } 
-                                        _ => {
-                                            // ignore
-                                        }
+                                        Some(Err(e)) => panic!("{}", e),
+                                        None => (),
                                     }
                                 }
+                                (Some(plugin), tag) if plugin == tag => {
+                                    todo!();
+                                }
+                                _ => {
+                                    // ignore
+                                }
+                            }
                         }
+                    }
                 }
                 dbg!(&shares);
                 let fk = crypto::reconstruct_secret(&shares[..]);
-            r.insert(i, Ok(fk));
+                r.insert(i, Ok(fk));
                 break; // todo: handle multiple stanzas per file
-                    }
             }
+        }
         Ok(r)
     }
 }
@@ -346,11 +354,18 @@ impl IdentityPluginV1 for IdentityPlugin {
 fn main() -> io::Result<()> {
     let cmd = command!()
         .arg(arg!(--"age-plugin" <state_machine> "run the given age plugin state machine"))
-        .subcommand(Command::new("wrap").long_flag("warp").about("wrap an identity")
-                    .arg(arg!(<identity> "identity to wrap")))
-        .subcommand(Command::new("build-recipient").about("prepare a threshold recipient")
-                    .arg(arg!(<recipients> "recipients"))
-                    .arg(arg!(-t --threshold <threshold> "threshold")))
+        .subcommand(
+            Command::new("wrap")
+                .long_flag("warp")
+                .about("wrap an identity")
+                .arg(arg!(<identity> "identity to wrap")),
+        )
+        .subcommand(
+            Command::new("build-recipient")
+                .about("prepare a threshold recipient")
+                .arg(arg!(<recipients> "recipients"))
+                .arg(arg!(-t --threshold <threshold> "threshold")),
+        )
         .get_matches();
 
     if let Some(state_machine) = cmd.get_one::<String>("age-plugin") {
@@ -371,13 +386,18 @@ fn main() -> io::Result<()> {
             let identity = subcmd.get_one::<String>("identity").unwrap();
             let inner_identity = GenericIdentity::from_bech32(&identity).unwrap();
             println!("# wraps {}", inner_identity.to_bech32());
-            let identity = ThresholdIdentity{inner_identity};
+            let identity = ThresholdIdentity { inner_identity };
             println!("{}", identity.to_bech32());
         }
         Some(("build-recipient", subcmd)) => {
             let recipients = subcmd.get_many::<String>("recipients").unwrap();
             let t = 1u16; // TODO
-            let recipient = ThresholdRecipient{t, recipients: recipients.map(|r| GenericRecipient::from_bech32(r.as_str()).unwrap()).collect()};
+            let recipient = ThresholdRecipient {
+                t,
+                recipients: recipients
+                    .map(|r| GenericRecipient::from_bech32(r.as_str()).unwrap())
+                    .collect(),
+            };
             println!("{}", recipient.to_bech32());
         }
         _ => {

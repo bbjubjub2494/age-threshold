@@ -1,6 +1,6 @@
+use crate::types::GenericIdentity;
 use bech32::{self, FromBase32, ToBase32, Variant};
 use rlp::{RlpDecodable, RlpEncodable};
-use crate::types::GenericIdentity;
 
 /// Wrap an arbitrary Age identity so it can be passed to the threshold plugin.
 ///
@@ -9,7 +9,7 @@ use crate::types::GenericIdentity;
 /// Age invokes the plugin and passes the identity to it.
 #[derive(Clone, Debug, PartialEq, RlpEncodable, RlpDecodable)]
 pub struct ThresholdIdentity {
-    pub inner_identity: GenericIdentity
+    pub inner_identity: GenericIdentity,
 }
 
 const PLUGIN_IDENTITY_HRP: &str = "age-plugin-threshold-";
@@ -42,10 +42,13 @@ mod tests {
     #[test]
     fn test_example() {
         let example = "AGE-PLUGIN-THRESHOLD-1ALHVPMQ8S83Z7HJYSXJ59Q0GS8WGRRN48FPZ28SSZZQUC7VP6XQE9QDNS8M3CKCUSX2KG5SFSXVH5L25PMT";
-        let expected = ThresholdIdentity { inner_identity: GenericIdentity {
-            plugin: None,
-            data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a").to_vec(),
-        }};
+        let expected = ThresholdIdentity {
+            inner_identity: GenericIdentity {
+                plugin: None,
+                data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a")
+                    .to_vec(),
+            },
+        };
         assert_eq!(expected.to_bech32(), example);
         assert_eq!(ThresholdIdentity::from_bech32(example), Ok(expected));
     }

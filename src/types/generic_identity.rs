@@ -17,13 +17,9 @@ impl GenericIdentity {
             None => NATIVE_IDENTITY_HRP.to_string(),
             Some(ref plugin) => PLUGIN_IDENTITY_HRP_PREFIX.to_string() + plugin,
         };
-        bech32::encode(
-            &hrp,
-            &self.data.to_base32(),
-            Variant::Bech32,
-        )
-        .unwrap()
-        .to_uppercase()
+        bech32::encode(&hrp, &self.data.to_base32(), Variant::Bech32)
+            .unwrap()
+            .to_uppercase()
     }
     pub fn from_bech32(s: &str) -> Result<Self, &str> {
         let (hrp, b32data, _) = bech32::decode(s).or(Err("invalid bech32"))?;
