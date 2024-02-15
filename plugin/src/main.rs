@@ -299,7 +299,7 @@ impl IdentityPluginV1 for IdentityPlugin {
     fn unwrap_file_keys(
         &mut self,
         file_keys: Vec<Vec<Stanza>>,
-        callbacks: impl Callbacks<identity::Error>,
+        _callbacks: impl Callbacks<identity::Error>,
     ) -> io::Result<HashMap<usize, Result<FileKey, Vec<identity::Error>>>> {
         let mut r = HashMap::new();
         for (i, efk) in file_keys.iter().enumerate() {
