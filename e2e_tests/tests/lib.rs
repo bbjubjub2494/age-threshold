@@ -1,8 +1,7 @@
-use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Write;
-use std::os::unix::ffi::OsStrExt;
 use std::process::Command;
+
 use tempfile::tempdir;
 
 #[test]
