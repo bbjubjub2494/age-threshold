@@ -23,22 +23,18 @@
 
         packages.plugin = pkgs.rustPlatform.buildRustPackage {
           name = "age-plugin-threshold";
-          src = ./.;
+          src = ./plugin;
 
-            cargoHash = "sha256-5MYvesqgCPHMuZN7lhvKcmh1c7yx+7ynyvhKVe3pst8=";
-            buildAndTestSubdir = "plugin";
+            cargoHash = "sha256-L5P4eUV9nahd1g7J9qAVflhNXOFI2XpFq9n8mKAKuJo=";
         };
         
         checks.e2e = pkgs.rustPlatform.buildRustPackage {
           name = "age-plugin-threshold-e2e_tests";
-          src = ./.;
+          src = ./e2e_tests;
 
-          inherit (packages.plugin) cargoHash;
-          cargoDepsName = "age-plugin-threshold";
+            cargoHash = "sha256-Lh15x4l/c7lDrHSLJ16XS6qFnml9WtbuPmVNt7YSHac=";
 
-          checkInputs = [ packages.plugin pkgs.age ];
-
-            buildAndTestSubdir = "e2e_tests";
+          nativeCheckInputs = [ packages.plugin pkgs.age ];
         };
       };
       flake = {

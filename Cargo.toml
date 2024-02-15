@@ -1,6 +1,0 @@
-[workspace]
-resolver = "2"
-members = [
-"plugin",
-"e2e_tests",
-]
