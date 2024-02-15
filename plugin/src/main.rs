@@ -8,13 +8,13 @@ use age_plugin::{
 };
 use clap::{arg, command, Command};
 use std::collections::HashMap;
+use std::fs::File;
 use std::io;
+use std::io::prelude::*;
+use std::io::BufReader;
 use std::str::FromStr;
 use std::string::String;
 use std::sync::mpsc::{Receiver, Sender};
-use std::io::BufReader;
-use std::io::prelude::*;
-use std::fs::File;
 
 use age_core::secrecy::Secret;
 use age_plugin_threshold::crypto::{self, SecretShare};
@@ -356,9 +356,9 @@ impl IdentityPluginV1 for IdentityPlugin {
 
 fn read_file(path: &str) -> io::Result<String> {
     let file = File::open(path)?;
-    for line in  BufReader::new(file).lines() {
+    for line in BufReader::new(file).lines() {
         let line2 = line?;
-            let line3 = line2.trim();
+        let line3 = line2.trim();
         if !line3.starts_with("#") {
             return Ok(line3.into());
         }
