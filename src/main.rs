@@ -12,6 +12,9 @@ use std::io;
 use std::str::FromStr;
 use std::string::String;
 use std::sync::mpsc::{Receiver, Sender};
+use std::io::BufReader;
+use std::io::prelude::*;
+use std::fs::File;
 
 use age_core::secrecy::Secret;
 use age_plugin_threshold::crypto::{self, SecretShare};
@@ -351,6 +354,18 @@ impl IdentityPluginV1 for IdentityPlugin {
     }
 }
 
+fn read_file(path: &str) -> io::Result<String> {
+    let file = File::open(path)?;
+    for line in  BufReader::new(file).lines() {
+        let line2 = line?;
+            let line3 = line2.trim();
+        if !line3.starts_with("#") {
+            return Ok(line3.into());
+        }
+    }
+    panic!("no data found");
+}
+
 fn main() -> io::Result<()> {
     let cmd = command!()
         .arg(arg!(--"age-plugin" <state_machine> "run the given age plugin state machine"))
@@ -383,7 +398,8 @@ fn main() -> io::Result<()> {
 
     match cmd.subcommand() {
         Some(("wrap", subcmd)) => {
-            let identity = subcmd.get_one::<String>("identity").unwrap();
+            let path = subcmd.get_one::<String>("identity").unwrap();
+            let identity = read_file(path).unwrap();
             let inner_identity = GenericIdentity::from_bech32(&identity).unwrap();
             println!("# wraps {}", inner_identity.to_bech32());
             let identity = ThresholdIdentity { inner_identity };

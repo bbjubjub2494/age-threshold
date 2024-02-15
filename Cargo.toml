@@ -14,3 +14,6 @@ clap = { version = "4.3.0", features = ["cargo"] }
 gf256 = { version = "0.3.0", features = ["shamir", "thread-rng"] }
 hex-literal = "0.4.1"
 rlp = { version = "0.5.2", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3.10.0"
