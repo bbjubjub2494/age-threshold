@@ -21,8 +21,25 @@
         # module parameters provide easy access to attributes of the same
         # system.
 
-        legacyPackages = import ./Cargo.nix { inherit pkgs; };
-        packages.default = legacyPackages.workspaceMembers.plugin.build;
+        packages.plugin = pkgs.rustPlatform.buildRustPackage {
+          name = "age-plugin-threshold";
+          src = ./.;
+
+            cargoHash = "sha256-5MYvesqgCPHMuZN7lhvKcmh1c7yx+7ynyvhKVe3pst8=";
+            buildAndTestSubdir = "plugin";
+        };
+        
+        checks.e2e = pkgs.rustPlatform.buildRustPackage {
+          name = "age-plugin-threshold-e2e_tests";
+          src = ./.;
+
+          inherit (packages.plugin) cargoHash;
+          cargoDepsName = "age-plugin-threshold";
+
+          checkInputs = [ packages.plugin pkgs.age ];
+
+            buildAndTestSubdir = "e2e_tests";
+        };
       };
       flake = {
         # The usual flake attributes can be defined here, including system-
