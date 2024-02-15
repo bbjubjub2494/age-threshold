@@ -1,19 +1,6 @@
-[package]
-name = "age-plugin-threshold"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-age = { version = "0.9.2", features = ["plugin", "ssh"] }
-age-core = "0.9.0"
-age-plugin = "0.4.0"
-bech32 = "0.9.1"
-clap = { version = "4.3.0", features = ["cargo"] }
-gf256 = { version = "0.3.0", features = ["shamir", "thread-rng"] }
-hex-literal = "0.4.1"
-rlp = { version = "0.5.2", features = ["derive"] }
-
-[dev-dependencies]
-tempfile = "3.10.0"
+[workspace]
+resolver = "2"
+members = [
+"plugin",
+"e2e_tests",
+]
