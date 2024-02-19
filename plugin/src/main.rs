@@ -407,9 +407,9 @@ fn main() -> io::Result<()> {
         }
         Some(("build-recipient", subcmd)) => {
             let recipients = subcmd.get_many::<String>("recipients").unwrap();
-            let t = 1u16; // TODO
+            let t = subcmd.get_one::<String>("threshold").unwrap().parse::<u16>().unwrap();
             let recipient = ThresholdRecipient {
-                t,
+                t: t.try_into().unwrap(),
                 recipients: recipients
                     .map(|r| GenericRecipient::from_bech32(r.as_str()).unwrap())
                     .collect(),

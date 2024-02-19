@@ -36,7 +36,7 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mut cmd = plugin();
         cmd.arg("build-recipient")
-            .arg("-t 2")
+            .arg("-t").arg("2")
             .args(recipients)
             .stdout(File::create("recipient.txt")?);
         assert!(cmd.status()?.success());
@@ -69,6 +69,7 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mut cmd = age();
         cmd.arg("-d").arg("-i").arg("key1.wrap.txt").arg("-i").arg("key3.wrap.txt").arg("test.age");
+        dbg!(cmd.output()?.stdout);
         assert!(cmd.output()?.stdout == b"test");
     }
 
