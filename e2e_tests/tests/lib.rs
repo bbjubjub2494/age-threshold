@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{File,remove_file};
 use std::io::Write;
 use std::process::Command;
 
@@ -19,31 +19,25 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
         Command::new("age")
     }
 
-    {
+    for i in 1..=3 {
         let mut cmd = keygen();
-        cmd.arg("-o").arg("key.txt");
+        cmd.arg("-o").arg(format!("key{}.txt", i));
         assert!(cmd.status()?.success());
     }
 
-    {
-        let mut cmd = plugin();
-        cmd.arg("wrap")
-            .arg("key.txt")
-            .stdout(File::create("key.wrap.txt")?);
-        assert!(cmd.status()?.success());
-    }
-
-    let recipient = {
+    let mut recipients = vec![];
+    for i in 1..=3 {
         let mut cmd = keygen();
-        cmd.arg("-y").arg("key.txt");
-        String::from_utf8(cmd.output()?.stdout)?
-    };
+        cmd.arg("-y").arg(format!("key{}.txt", i));
+        let recipient = String::from_utf8(cmd.output()?.stdout)?;
+        recipients.push(recipient.trim().to_string());
+    }
 
     {
         let mut cmd = plugin();
         cmd.arg("build-recipient")
-            .arg("-t 1")
-            .arg(recipient.trim())
+            .arg("-t 2")
+            .args(recipients)
             .stdout(File::create("recipient.txt")?);
         assert!(cmd.status()?.success());
     }
@@ -61,10 +55,21 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
         assert!(cmd.status()?.success());
     }
 
+
+    for i in 1..=3 {
+        let mut cmd = plugin();
+        cmd.arg("wrap")
+            .arg(format!("key{}.txt", i))
+            .stdout(File::create(format!("key{}.wrap.txt",i))?);
+        assert!(cmd.status()?.success());
+    }
+
+    remove_file("key2.wrap.txt")?;
+
     {
         let mut cmd = age();
-        cmd.arg("-d").arg("-i").arg("key.wrap.txt").arg("test.age");
-        assert!(cmd.status()?.success());
+        cmd.arg("-d").arg("-i").arg("key1.wrap.txt").arg("-i").arg("key3.wrap.txt").arg("test.age");
+        assert!(cmd.output()?.stdout == b"test");
     }
 
     tmp_dir.close()?;

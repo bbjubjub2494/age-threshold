@@ -378,7 +378,7 @@ fn main() -> io::Result<()> {
         .subcommand(
             Command::new("build-recipient")
                 .about("prepare a threshold recipient")
-                .arg(arg!(<recipients> "recipients"))
+                .arg(arg!(<recipients>... "recipients"))
                 .arg(arg!(-t --threshold <threshold> "threshold")),
         )
         .get_matches();
