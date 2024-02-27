@@ -314,9 +314,7 @@ impl IdentityPluginV1 for IdentityPlugin {
                 let mut shares = vec![];
                 for (j, s) in body.enc_shares.iter().enumerate() {
                     for s in &s.stanzas {
-                        dbg!(&s);
                         for i in &self.identities {
-                            dbg!(&i);
                             match (&i.plugin, s.tag.as_str()) {
                                 (None, "X25519") => {
                                     // built-in identity
@@ -344,10 +342,13 @@ impl IdentityPluginV1 for IdentityPlugin {
                         }
                     }
                 }
-                dbg!(&shares);
+                if shares.len() < body.recipient.t.into() {
+                    r.insert(i, Err(vec![identity::Error::Identity{ index: 0, message: "threshold not met".to_string()}]));
+                } else {
                 let fk = crypto::reconstruct_secret(&shares[..]);
                 r.insert(i, Ok(fk));
                 break; // todo: handle multiple stanzas per file
+                }
             }
         }
         Ok(r)
@@ -378,7 +379,7 @@ fn main() -> io::Result<()> {
         .subcommand(
             Command::new("build-recipient")
                 .about("prepare a threshold recipient")
-                .arg(arg!(<recipients>... "recipients"))
+                .arg(arg!(<recipients> ... "recipients"))
                 .arg(arg!(-t --threshold <threshold> "threshold")),
         )
         .get_matches();

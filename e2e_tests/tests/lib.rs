@@ -36,7 +36,7 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mut cmd = plugin();
         cmd.arg("build-recipient")
-            .arg("-t").arg("2")
+            .arg("-t").arg("1")
             .args(recipients)
             .stdout(File::create("recipient.txt")?);
         assert!(cmd.status()?.success());
