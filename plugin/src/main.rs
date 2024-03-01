@@ -111,15 +111,13 @@ fn main() -> io::Result<()> {
     } else {
         let stdin = io::stdin();
         let mut reader = BufReader::new(stdin);
-        let i = match reader.parse(deserialize) {
-            Ok(i) => i,
-            Err(_) => todo!(),
-        };
-        /*
-        let (stanza, _) = deserialize(&input).map_err(|err| io::Error::other(err.to_string()))?;
-        println!("{:?}", stanza);
-        dbg!(deserialize(&input));
-        */
+        let stanzas = reader.parse(deserialize).map_err(|err| match err {
+            nom_bufreader::Error::Error(err) => io::Error::new(io::ErrorKind::InvalidData, "parse error"),
+            nom_bufreader::Error::Failure(err) => io::Error::new(io::ErrorKind::InvalidData, "parse error"),
+            nom_bufreader::Error::Io(err) => err,
+            nom_bufreader::Error::Eof => io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected eof"),
+        })?;
+        dbg!(stanzas);
     }
 
     Ok(())
@@ -133,19 +131,41 @@ fn serialize<W: Write>(t: usize, enc_shares: &Vec<EncShare>) -> impl Fn(WriteCon
             wc = format::write::age_stanza(&s.tag, &s.args, &s.body)(wc)?;
         }
     }
+    wc = wc.write(b"---")?;
     Ok(wc)
     }
 }
 
-//fn deserialize(input: &[u8]) -> Result<(&[u8],AgeStanza<'_>), nom::Err<nom::error::Error<&[u8]>>> {
-//fn deserialize<'a>(input: &'a [u8]) -> nom::IResult<&'a [u8],AgeStanza<'a>> {
-/*
-fn deserialize<'a>(input: &'a [u8]) -> nom::IResult<&'a [u8], nom::Err<nom::error::Error<&[u8]>>, AgeStanza<'a>> {
-    let (input, stanza) = format::read::age_stanza(input)?;
-    Ok((input, stanza))
+fn deserialize<'a>(input: &[u8]) -> nom::IResult<&[u8], Vec<Stanza>, nom::error::Error<Vec<u8>>> {
+    match deserialize2(input) {
+        Ok((input, mut stanzas)) => Ok((input, stanzas.drain(..).map(|s| s.into()).collect())),
+        Err(err) => Err(err.to_owned())
+    }
 }
-*/
-fn deserialize<'a>(input: &[u8]) -> nom::IResult<&[u8], Stanza, io::Error> {
-    let (input, stanza) = format::read::age_stanza(input).map_err(|err| nom::Err::Error(io::Error::other("parse error TODO")))?;
-    Ok((input, stanza.into()))
+fn deserialize2<'a>(input: &[u8]) -> nom::IResult<&[u8], Vec<AgeStanza>, nom::error::Error<&[u8]>> {
+    /*
+    (input, stanza) = format::read::age_stanza(input)?;
+    if stanza.tag != "threshold" {
+        return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
+    }
+    */
+    // let t = stanza.args[0].parse::<usize>().map_err(|err| nom::error::Error::new(input, nom::error::ErrorKind::ParseInt))?;
+    let (input, stanzas) = nom::multi::many_till(format::read::age_stanza, tag("---"))(input)?;
+    dbg!(stanzas.len());
+    dbg!(input.len());
+    /*
+    loop {
+        match format::read::age_stanza(input) {
+            Ok((input_, stanza)) => {
+                input = input_;
+                dbg!(stanzas.len());
+                dbg!(input.len());
+                stanzas.push(stanza.into());
+            },
+            Err(nom::Err::Incomplete(needed)) => return Err(nom::Err::Incomplete(needed)),
+            Err(err) => { dbg!(err); break; }
+        };
+    }
+    */
+    Ok((input, stanzas))
 }
