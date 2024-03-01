@@ -1,22 +1,20 @@
-use age_core::format::{FileKey, Stanza};
+use age_core::format::{FileKey, Stanza, AgeStanza};
+use cookie_factory::{WriteContext, GenResult};
+use nom_bufreader::bufreader::BufReader;
+use nom_bufreader::Parse;
 
 use age::Identity;
-use age_plugin::{
-    identity::{self, IdentityPluginV1},
-    recipient::{self, RecipientPluginV1},
-    run_state_machine, Callbacks,
-};
-use clap::{arg, command, Command};
+use age_core::format;
+use age::cli_common::UiCallbacks;
+use clap::{Parser,ArgAction::SetTrue, arg, command, Command};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
-use std::io::BufReader;
 use std::str::FromStr;
 use std::string::String;
 use std::sync::mpsc::{Receiver, Sender};
 
-use age_core::secrecy::Secret;
 use age_plugin_threshold::crypto::{self, SecretShare};
 use rlp::{Decodable, Encodable, RlpDecodable, RlpEncodable, RlpStream};
 
@@ -25,403 +23,129 @@ use age_plugin_threshold::types::GenericRecipient;
 use age_plugin_threshold::types::ThresholdIdentity;
 use age_plugin_threshold::types::ThresholdRecipient;
 
-#[derive(Debug, Default)]
-struct RecipientPlugin {
-    recipients: Vec<ThresholdRecipient>,
-}
 
-pub enum CallbacksMethod {
-    DisplayMessage(String),
-    Confirm(String, String, Option<String>, Sender<Option<bool>>),
-    RequestPublicString(String, Sender<Option<String>>),
-    RequestPassphrase(String, Sender<Option<Secret<String>>>),
-}
-
-// horrific hack to wrap age_plugin::Callbacks into age::Callbacks.
-// the latter requires a Send + Sync + 'static trait object, which is not possible to implement using the former.
-// instead, we keep the age::Callback in one thread and do RPC from another.
-static senders: std::sync::Mutex<Option<(Sender<CallbacksMethod>, Receiver<CallbacksMethod>)>> =
-    std::sync::Mutex::new(None);
-
-#[derive(Copy, Clone)]
-struct CallbacksAdapter {}
-
-impl CallbacksAdapter {
-    fn new() -> Self {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        senders.lock().unwrap().replace((sender, receiver));
-        Self {}
-    }
-
-    fn interact(&self, callbacks: &mut impl Callbacks<recipient::Error>) {
-        let (_, receiver) = senders.lock().unwrap().take().unwrap();
-        for method in receiver.iter() {
-            match method {
-                CallbacksMethod::DisplayMessage(msg) => match callbacks.message(&msg) {
-                    Ok(_) => (),
-                    Err(e) => eprintln!("Error: {:?}", e),
-                },
-                CallbacksMethod::Confirm(message, yes_string, no_string, result) => {
-                    match callbacks.confirm(&message, &yes_string, no_string.as_deref()) {
-                        Ok(Ok(r)) => result.send(Some(r)),
-                        e => {
-                            eprintln!("Error: {:?}", e);
-                            result.send(None)
-                        }
-                    };
-                }
-                CallbacksMethod::RequestPublicString(message, result) => {
-                    match callbacks.request_public(&message) {
-                        Ok(Ok(r)) => result.send(Some(r)),
-                        e => {
-                            eprintln!("Error: {:?}", e);
-                            result.send(None)
-                        }
-                    };
-                }
-                CallbacksMethod::RequestPassphrase(message, result) => {
-                    match callbacks.request_secret(&message) {
-                        Ok(Ok(r)) => result.send(Some(r)),
-                        e => {
-                            eprintln!("Error: {:?}", e);
-                            result.send(None)
-                        }
-                    };
-                }
-            }
-        }
-    }
-
-    fn reset(&self) {
-        // drop the sender so the receiver stops iterating
-        *senders.lock().unwrap() = None;
-    }
-}
-
-impl age::Callbacks for CallbacksAdapter {
-    fn display_message(&self, msg: &str) {
-        let (sender, _) = senders.lock().unwrap().take().unwrap();
-        sender
-            .send(CallbacksMethod::DisplayMessage(msg.into()))
-            .unwrap();
-    }
-    fn confirm(&self, message: &str, yes_string: &str, no_string: Option<&str>) -> Option<bool> {
-        let (sender, _) = senders.lock().unwrap().take().unwrap();
-        let (result, receiver) = std::sync::mpsc::channel();
-        sender
-            .send(CallbacksMethod::Confirm(
-                message.into(),
-                yes_string.into(),
-                no_string.map(|r| r.into()),
-                result,
-            ))
-            .unwrap();
-        receiver.recv().unwrap()
-    }
-    fn request_public_string(&self, msg: &str) -> Option<std::string::String> {
-        let (sender, _) = senders.lock().unwrap().take().unwrap();
-        let (result, receiver) = std::sync::mpsc::channel();
-        sender
-            .send(CallbacksMethod::RequestPublicString(msg.into(), result))
-            .unwrap();
-        receiver.recv().unwrap()
-    }
-    fn request_passphrase(&self, msg: &str) -> Option<Secret<std::string::String>> {
-        let (sender, _) = senders.lock().unwrap().take().unwrap();
-        let (result, receiver) = std::sync::mpsc::channel();
-        sender
-            .send(CallbacksMethod::RequestPassphrase(msg.into(), result))
-            .unwrap();
-        receiver.recv().unwrap()
-    }
-}
-
-#[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
 struct EncShare {
     index: u8,
-    //data: [u8; FILE_KEY_BYTES],
-    stanzas: Vec<EncodableStanza>,
+    stanzas: Vec<Stanza>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-struct EncodableStanza {
-    tag: String,
-    args: Vec<String>,
-    body: Vec<u8>,
-}
-
-impl EncodableStanza {
-    fn from(s: &Stanza) -> Self {
-        Self {
-            tag: s.tag.clone(),
-            args: s.args.clone(),
-            body: s.body.clone(),
-        }
-    }
-
-    fn into(&self) -> Stanza {
-        Stanza {
-            tag: self.tag.clone(),
-            args: self.args.clone(),
-            body: self.body.clone(),
-        }
-    }
-}
-
-impl Encodable for EncodableStanza {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(3);
-        s.append(&self.tag);
-        s.begin_list(self.args.len());
-        for a in &self.args {
-            s.append(a);
-        }
-        s.append(&self.body);
-    }
-}
-
-impl Decodable for EncodableStanza {
-    fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-        Ok(Self {
-            tag: rlp.at(0)?.as_val()?,
-            args: rlp.at(1)?.as_list()?,
-            body: rlp.at(2)?.as_val()?,
-        })
-    }
-}
-
-#[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
-struct StanzaBody {
-    recipient: ThresholdRecipient,
-    enc_shares: Vec<EncShare>,
-}
-
-impl RecipientPluginV1 for RecipientPlugin {
-    fn add_recipient(
-        &mut self,
-        index: usize,
-        plugin_name: &str,
-        bytes: &[u8],
-    ) -> Result<(), recipient::Error> {
-        if plugin_name != "threshold" {
-            return Err(recipient::Error::Recipient {
-                index: index,
-                message: "not age-plugin-threshold".into(),
-            });
-        }
-        self.recipients.push(rlp::decode(bytes).unwrap());
-        Ok(())
-    }
-
-    fn add_identity(
-        &mut self,
-        _index: usize,
-        _plugin_name: &str,
-        _bytes: &[u8],
-    ) -> Result<(), recipient::Error> {
-        todo!()
-    }
-
-    fn wrap_file_keys(
-        &mut self,
-        file_keys: Vec<FileKey>,
-        mut callbacks: impl Callbacks<recipient::Error>,
-    ) -> io::Result<Result<Vec<Vec<Stanza>>, Vec<recipient::Error>>> {
-        Ok(Ok(self
-            .recipients
-            .iter()
-            .map(|r| {
-                file_keys
-                    .iter()
-                    .map(|fk| {
-                        let shares = crypto::share_secret(fk, r.t.into(), r.recipients.len());
-                        let adapted_callbacks = CallbacksAdapter::new();
-                        let recipients = r.recipients.clone();
-                        let enc_shares = {
-                            let thread = std::thread::spawn(move || {
-                                let r = shares
-                                    .iter()
-                                    .zip(recipients.iter())
-                                    .map(|(s, r)| EncShare {
-                                        index: s.index,
-                                        stanzas: r
-                                            .to_recipient(adapted_callbacks)
-                                            .unwrap() // FIXME: error handling
-                                            .wrap_file_key(&s.file_key)
-                                            .unwrap()
-                                            .iter()
-                                            .map(|s| EncodableStanza::from(s))
-                                            .collect(),
-                                    })
-                                    .collect::<Vec<_>>();
-                                adapted_callbacks.reset();
-                                r
-                            });
-                            adapted_callbacks.interact(&mut callbacks);
-                            thread.join().unwrap()
-                        };
-                        Stanza {
-                            tag: "threshold".into(),
-                            args: vec![],
-                            body: rlp::encode(&StanzaBody {
-                                recipient: r.clone(),
-                                enc_shares: enc_shares,
-                            })
-                            .to_vec(),
-                        }
-                    })
-                    .collect()
-            })
-            .collect()))
-    }
-}
-
-#[derive(Debug, Default)]
-struct IdentityPlugin {
-    identities: Vec<GenericIdentity>,
-}
-
-impl IdentityPluginV1 for IdentityPlugin {
-    fn add_identity(
-        &mut self,
-        _index: usize,
-        plugin_name: &str,
-        bytes: &[u8],
-    ) -> Result<(), identity::Error> {
-        if plugin_name != "threshold" {
-            panic!("not age-plugin-threshold");
-        }
-        let identity: ThresholdIdentity = rlp::decode(bytes).unwrap();
-        self.identities.push(identity.inner_identity);
-        Ok(())
-    }
-
-    fn unwrap_file_keys(
-        &mut self,
-        file_keys: Vec<Vec<Stanza>>,
-        _callbacks: impl Callbacks<identity::Error>,
-    ) -> io::Result<HashMap<usize, Result<FileKey, Vec<identity::Error>>>> {
-        let mut r = HashMap::new();
-        for (i, efk) in file_keys.iter().enumerate() {
-            for stanza in efk {
-                if stanza.tag != "threshold" {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "not a threshold stanza",
-                    ));
-                }
-                let body = rlp::decode::<StanzaBody>(&stanza.body).unwrap();
-                let mut shares = vec![];
-                for (j, s) in body.enc_shares.iter().enumerate() {
-                    for s in &s.stanzas {
-                        for i in &self.identities {
-                            match (&i.plugin, s.tag.as_str()) {
-                                (None, "X25519") => {
-                                    // built-in identity
-                                    let i =
-                                        age::x25519::Identity::from_str(&i.to_bech32()).unwrap();
-                                    match i.unwrap_stanza(&s.into()) {
-                                        Some(Ok(r)) => {
-                                            shares.push(SecretShare {
-                                                index: j.try_into().unwrap(),
-                                                file_key: r,
-                                            });
-                                            break;
-                                        }
-                                        Some(Err(e)) => panic!("{}", e),
-                                        None => (),
-                                    }
-                                }
-                                (Some(plugin), tag) if plugin == tag => {
-                                    todo!();
-                                }
-                                _ => {
-                                    // ignore
-                                }
-                            }
-                        }
-                    }
-                }
-                if shares.len() < body.recipient.t.into() {
-                    r.insert(i, Err(vec![identity::Error::Identity{ index: 0, message: "threshold not met".to_string()}]));
-                } else {
-                let fk = crypto::reconstruct_secret(&shares[..]);
-                r.insert(i, Ok(fk));
-                break; // todo: handle multiple stanzas per file
-                }
-            }
-        }
-        Ok(r)
-    }
-}
-
-fn read_file(path: &str) -> io::Result<String> {
+/*
+fn read_text_file(path: &str) -> io::Result<Vec::<String>> {
+use std::io::BufReader;
     let file = File::open(path)?;
-    for line in BufReader::new(file).lines() {
-        let line2 = line?;
-        let line3 = line2.trim();
-        if !line3.starts_with("#") {
-            return Ok(line3.into());
-        }
+    let mut v = vec![];
+    for l in BufReader::new(file).lines() {
+        let line = l?;
+            if !line.starts_with("#") {
+                v.push(line.trim().to_string());
+            }
     }
-    panic!("no data found");
+    Ok(v)
 }
+*/
+
+#[derive(clap::Parser)]
+#[command(name = "three")]
+#[command(bin_name = "three")]
+struct Cli {
+    #[clap(short, long)]
+    encrypt: bool,
+    #[clap(short, long)]
+    decrypt: bool,
+    #[clap(short, long)]
+    threshold: Option<usize>,
+    #[clap(short, long)]
+    recipients: Vec<String>,
+    #[clap(short, long)]
+    identity: Vec<String>,
+}
+
+use nom::bytes::streaming::tag;
 
 fn main() -> io::Result<()> {
-    let cmd = command!()
-        .arg(arg!(--"age-plugin" <state_machine> "run the given age plugin state machine"))
-        .subcommand(
-            Command::new("wrap")
-                .long_flag("warp")
-                .about("wrap an identity")
-                .arg(arg!(<identity> "identity to wrap")),
-        )
-        .subcommand(
-            Command::new("build-recipient")
-                .about("prepare a threshold recipient")
-                .arg(arg!(<recipients> ... "recipients"))
-                .arg(arg!(-t --threshold <threshold> "threshold")),
-        )
-        .get_matches();
+    /* AGE:
+     * Usage:
+     *    age [--encrypt] (-r RECIPIENT | -R PATH)... [--armor] [-o OUTPUT] [INPUT]
+     *    age [--encrypt] --passphrase [--armor] [-o OUTPUT] [INPUT]
+     *    age --decrypt [-i PATH]... [-o OUTPUT] [INPUT]
+     *
+     * Options:
+     *    -e, --encrypt               Encrypt the input to the output. Default if omitted.
+     *    -d, --decrypt               Decrypt the input to the output.
+     *    -o, --output OUTPUT         Write the result to the file at path OUTPUT.
+     *    -a, --armor                 Encrypt to a PEM encoded format.
+     *    -p, --passphrase            Encrypt with a passphrase.
+     *    -r, --recipient RECIPIENT   Encrypt to the specified RECIPIENT. Can be repeated.
+     *    -R, --recipients-file PATH  Encrypt to recipients listed at PATH. Can be repeated.
+     *    -i, --identity PATH         Use the identity file at PATH. Can be repeated.
+     */
+    let cmd = Cli::parse();
 
-    if let Some(state_machine) = cmd.get_one::<String>("age-plugin") {
-        // The plugin was started by an age client; run the state machine.
-        run_state_machine(
-            &state_machine,
-            RecipientPlugin::default,
-            IdentityPlugin::default,
-        )?;
-        return Ok(());
+    let mut recipients = vec![];
+    for r in cmd.recipients {
+                recipients.push(GenericRecipient::from_bech32(r.as_str()).map_err(io::Error::other)?);
     }
 
-    // Here you can assume the binary is being run directly by a user,
-    // and perform administrative tasks like generating keys.
+    if cmd.encrypt && cmd.decrypt {
+        return Err(io::Error::other("cannot encrypt and decrypt at the same time"));
+    }
 
-    match cmd.subcommand() {
-        Some(("wrap", subcmd)) => {
-            let path = subcmd.get_one::<String>("identity").unwrap();
-            let identity = read_file(path).unwrap();
-            let inner_identity = GenericIdentity::from_bech32(&identity).unwrap();
-            println!("# wraps {}", inner_identity.to_bech32());
-            let identity = ThresholdIdentity { inner_identity };
-            println!("{}", identity.to_bech32());
-        }
-        Some(("build-recipient", subcmd)) => {
-            let recipients = subcmd.get_many::<String>("recipients").unwrap();
-            let t = subcmd.get_one::<String>("threshold").unwrap().parse::<u16>().unwrap();
-            let recipient = ThresholdRecipient {
-                t: t.try_into().unwrap(),
-                recipients: recipients
-                    .map(|r| GenericRecipient::from_bech32(r.as_str()).unwrap())
-                    .collect(),
-            };
-            println!("{}", recipient.to_bech32());
-        }
-        _ => {
-            eprintln!("No subcommand given");
-            std::process::exit(1);
-        }
+    if cmd.encrypt {
+    let threshold = cmd.threshold.unwrap_or(recipients.len()/2+1);
+
+    if recipients.len() < threshold {
+        return Err(io::Error::other("not enough recipients"));
+    }
+
+    let callbacks = UiCallbacks{};
+    let secret = FileKey::from([9; 16]);
+    let shares = crypto::share_secret(&secret, threshold, recipients.len());
+    let mut enc_shares = vec![];
+    for (r,s) in recipients.iter().zip(shares.iter()) {
+        let recipient = r.to_recipient(callbacks).map_err(io::Error::other)?;
+        let stanzas = recipient.wrap_file_key(&s.file_key).map_err(io::Error::other)?;
+        enc_shares.push(EncShare{index: s.index, stanzas});
+    }
+    let mut wc = cookie_factory::WriteContext{write: std::io::stdout(), position: 0};
+    wc = serialize(threshold, &enc_shares)(wc).map_err(io::Error::other)?;
+    } else {
+        let stdin = io::stdin();
+        let mut reader = BufReader::new(stdin);
+        let i = match reader.parse(deserialize) {
+            Ok(i) => i,
+            Err(_) => todo!(),
+        };
+        /*
+        let (stanza, _) = deserialize(&input).map_err(|err| io::Error::other(err.to_string()))?;
+        println!("{:?}", stanza);
+        dbg!(deserialize(&input));
+        */
     }
 
     Ok(())
+}
+
+fn serialize<W: Write>(t: usize, enc_shares: &Vec<EncShare>) -> impl Fn(WriteContext<W>) -> GenResult<W> + '_ { move |mut wc| {
+    wc = format::write::age_stanza("threshold", &[&t.to_string()], &[])(wc)?;
+    for es in enc_shares {
+        wc = format::write::age_stanza("share_index", &[&es.index.to_string()], &[])(wc)?;
+        for s in &es.stanzas {
+            wc = format::write::age_stanza(&s.tag, &s.args, &s.body)(wc)?;
+        }
+    }
+    Ok(wc)
+    }
+}
+
+//fn deserialize(input: &[u8]) -> Result<(&[u8],AgeStanza<'_>), nom::Err<nom::error::Error<&[u8]>>> {
+//fn deserialize<'a>(input: &'a [u8]) -> nom::IResult<&'a [u8],AgeStanza<'a>> {
+/*
+fn deserialize<'a>(input: &'a [u8]) -> nom::IResult<&'a [u8], nom::Err<nom::error::Error<&[u8]>>, AgeStanza<'a>> {
+    let (input, stanza) = format::read::age_stanza(input)?;
+    Ok((input, stanza))
+}
+*/
+fn deserialize<'a>(input: &[u8]) -> nom::IResult<&[u8], Stanza, io::Error> {
+    let (input, stanza) = format::read::age_stanza(input).map_err(|err| nom::Err::Error(io::Error::other("parse error TODO")))?;
+    Ok((input, stanza.into()))
 }

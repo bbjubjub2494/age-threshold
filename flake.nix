@@ -31,7 +31,7 @@
           name = "age-plugin-threshold";
           src = ./plugin;
 
-          cargoHash = "sha256-L5P4eUV9nahd1g7J9qAVflhNXOFI2XpFq9n8mKAKuJo=";
+          cargoHash = "sha256-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX=";
         };
 
         checks.e2e = pkgs.rustPlatform.buildRustPackage {

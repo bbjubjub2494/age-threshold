@@ -35,39 +35,19 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
 
     {
         let mut cmd = plugin();
-        cmd.arg("build-recipient")
-            .arg("-t").arg("1")
-            .args(recipients)
-            .stdout(File::create("recipient.txt")?);
+        cmd
+            .arg("-t").arg("2")
+            .stdout(File::create("test.age")?);
+        for r in recipients {
+            cmd.args(&["-r", &r]);
+        }
         assert!(cmd.status()?.success());
     }
+
+    remove_file("key2.txt")?;
 
     {
-        let mut cmd = age();
-        let mut stdin = File::create("test")?;
-        stdin.write_all(b"test")?;
-        drop(stdin);
-        cmd.arg("-R")
-            .arg("recipient.txt")
-            .arg("-o")
-            .arg("test.age")
-            .stdin(File::open("test")?);
-        assert!(cmd.status()?.success());
-    }
-
-
-    for i in 1..=3 {
         let mut cmd = plugin();
-        cmd.arg("wrap")
-            .arg(format!("key{}.txt", i))
-            .stdout(File::create(format!("key{}.wrap.txt",i))?);
-        assert!(cmd.status()?.success());
-    }
-
-    remove_file("key2.wrap.txt")?;
-
-    {
-        let mut cmd = age();
         cmd.arg("-d").arg("-i").arg("key1.wrap.txt").arg("-i").arg("key3.wrap.txt").arg("test.age");
         dbg!(cmd.output()?.stdout);
         assert!(cmd.output()?.stdout == b"test");
