@@ -2,6 +2,7 @@ use age_core::format::{FileKey, Stanza, AgeStanza};
 use cookie_factory::{WriteContext, GenResult};
 use nom_bufreader::bufreader::BufReader;
 use nom_bufreader::Parse;
+use cookie_factory::combinator::slice;
 
 use age::Identity;
 use age_core::format;
@@ -90,7 +91,7 @@ fn main() -> io::Result<()> {
         return Err(io::Error::other("cannot encrypt and decrypt at the same time"));
     }
 
-    if cmd.encrypt {
+    if !cmd.decrypt {
     let threshold = cmd.threshold.unwrap_or(recipients.len()/2+1);
 
     if recipients.len() < threshold {
@@ -131,7 +132,7 @@ fn serialize<W: Write>(t: usize, enc_shares: &Vec<EncShare>) -> impl Fn(WriteCon
             wc = format::write::age_stanza(&s.tag, &s.args, &s.body)(wc)?;
         }
     }
-    wc = wc.write(b"---")?;
+    wc = slice(&b"---")(wc)?;
     Ok(wc)
     }
 }
@@ -150,7 +151,7 @@ fn deserialize2<'a>(input: &[u8]) -> nom::IResult<&[u8], Vec<AgeStanza>, nom::er
     }
     */
     // let t = stanza.args[0].parse::<usize>().map_err(|err| nom::error::Error::new(input, nom::error::ErrorKind::ParseInt))?;
-    let (input, stanzas) = nom::multi::many_till(format::read::age_stanza, tag("---"))(input)?;
+    let (input, (stanzas,_)) = nom::multi::many_till(format::read::age_stanza, tag("---"))(input)?;
     dbg!(stanzas.len());
     dbg!(input.len());
     /*
