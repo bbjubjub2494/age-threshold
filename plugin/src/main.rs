@@ -4,8 +4,11 @@ use cookie_factory::{WriteContext, GenResult};
 use nom_bufreader::bufreader::BufReader;
 use nom_bufreader::Parse;
 use cookie_factory::combinator::slice;
+use chacha20poly1305::KeyInit;
+use chacha20poly1305::AeadInPlace;
 
 use age::Identity;
+use age::keys;
 use age_core::format;
 use age::cli_common::UiCallbacks;
 use clap::{Parser,ArgAction::SetTrue, arg, command, Command};
@@ -16,6 +19,9 @@ use std::io::prelude::*;
 use std::str::FromStr;
 use std::string::String;
 use std::sync::mpsc::{Receiver, Sender};
+use rand::rngs::OsRng;
+use rand::RngCore;
+use age_core::primitives::hkdf;
 
 use age_plugin_threshold::crypto::{self, SecretShare};
 use rlp::{Decodable, Encodable, RlpDecodable, RlpEncodable, RlpStream};
@@ -25,6 +31,7 @@ use age_plugin_threshold::types::GenericRecipient;
 use age_plugin_threshold::types::ThresholdIdentity;
 use age_plugin_threshold::types::ThresholdRecipient;
 
+const PAYLOAD_KEY_LABEL: &[u8] = b"payload";
 
 fn read_text_file(path: &str) -> io::Result<Vec::<String>> {
 use std::io::BufReader;
@@ -37,6 +44,12 @@ use std::io::BufReader;
             }
     }
     Ok(v)
+}
+
+pub fn new_file_key() -> FileKey {
+    let mut buf = [0; 16];
+    OsRng.fill_bytes(&mut buf);
+    FileKey::from(buf)
 }
 
 #[derive(clap::Parser)]
@@ -99,8 +112,8 @@ fn main() -> io::Result<()> {
     }
 
     let callbacks = UiCallbacks{};
-    let secret = FileKey::from([9; 16]);
-    let shares = crypto::share_secret(&secret, threshold, recipients.len());
+    let file_key = new_file_key();
+    let shares = crypto::share_secret(&file_key, threshold, recipients.len());
     let mut shares_stanzas = vec![];
     for (r,s) in recipients.iter().zip(shares.iter()) {
         let recipient = r.to_recipient(callbacks).map_err(io::Error::other)?;
@@ -111,8 +124,19 @@ fn main() -> io::Result<()> {
         let stanza = r.remove(0);
         shares_stanzas.push(stanza);
     }
-    let mut wc = cookie_factory::WriteContext{write: std::io::stdout(), position: 0};
-    wc = serialize(threshold, &shares_stanzas)(wc).map_err(io::Error::other)?;
+    let out = std::io::stdout();
+    let (mut out,_) = cookie_factory::gen(serialize(threshold, &shares_stanzas), out).map_err(io::Error::other)?;
+
+    // TODO: handle multiple chunks
+    let mut buf = vec![0;64*1024];
+    std::io::stdin().read(&mut buf[..])?;
+        let mut nonce = [0;16];
+        OsRng.fill_bytes(&mut nonce);
+        let payload_key = hkdf(nonce.as_ref(), PAYLOAD_KEY_LABEL, file_key.expose_secret()).into();
+        let aead = chacha20poly1305::ChaCha20Poly1305::new(&payload_key);
+        aead.encrypt_in_place((&[0;12]).into(), b"", &mut buf).map_err(|err| io::Error::other(err))?;
+        out.write_all(&nonce)?;
+        out.write_all(&buf)?;
     } else {
     let callbacks = UiCallbacks{};
         let stdin = io::stdin();

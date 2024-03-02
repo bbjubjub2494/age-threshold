@@ -6,15 +6,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+aead = { version = "0.5.2", features = ["std"] }
 age = { git = "https://github.com/bbjubjub2494/rage", version = "0.10.0", features = ["plugin", "ssh", "cli-common", "armor"] }
 age-core = { git = "https://github.com/bbjubjub2494/rage", version = "0.10.0" }
 bech32 = "0.9.1"
+ch = "0.0.0"
+chacha20poly1305 = "0.10.1"
 clap = { version = "4.3.0", features = ["cargo", "derive"] }
 cookie-factory = "0.3.2"
 gf256 = { version = "0.3.0", features = ["shamir", "thread-rng"] }
 hex-literal = "0.4.1"
 nom = "7.1.3"
 nom-bufreader = "0.2.0"
+rand = "0.8.5"
 rlp = { version = "0.5.2", features = ["derive"] }
 
 [dev-dependencies]

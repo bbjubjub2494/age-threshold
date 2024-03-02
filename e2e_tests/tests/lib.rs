@@ -48,7 +48,7 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
 
     {
         let mut cmd = plugin();
-        cmd.arg("-d").arg("-i").arg("key1.wrap.txt").arg("-i").arg("key3.wrap.txt").stdin(File::open("test.age")?);
+        cmd.arg("-d").arg("-i").arg("key1.txt").arg("-i").arg("key3.txt").stdin(File::open("test.age")?);
         dbg!(cmd.output()?.stdout);
         assert!(cmd.output()?.stdout == b"test");
     }
