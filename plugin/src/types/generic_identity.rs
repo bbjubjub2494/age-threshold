@@ -1,5 +1,6 @@
 use bech32::{self, FromBase32, ToBase32, Variant};
 use rlp::{RlpDecodable, RlpEncodable};
+use std::str::FromStr;
 
 /// Represents any Age identity, whether native or plugin.
 #[derive(Clone, Debug, PartialEq, RlpEncodable, RlpDecodable)]
@@ -34,23 +35,21 @@ impl GenericIdentity {
         Ok(GenericIdentity { plugin, data })
     }
 
-    /*
     pub fn to_identity<C: age::Callbacks>(
         self: &Self,
         callbacks: C,
     ) -> Result<Box<dyn age::Identity>, String> {
         match self.plugin {
             None => Ok(Box::new(
-                age::x25519::Identity::from_str(&self.encode()).unwrap(),
+                age::x25519::Identity::from_str(&self.to_bech32()).unwrap(),
             )),
             // TODO: ssh
             Some(ref plugin_name) => match age::plugin::IdentityPluginV1::new(
                 plugin_name,
-                &[age::plugin::Recipient::from_str(&self.encode()).unwrap()],
-                &[],
+                &[age::plugin::Identity::from_str(&self.to_bech32()).unwrap()],
                 callbacks,
             ) {
-                Err(age::EncryptError::MissingPlugin { binary_name }) => Err(format!(
+                Err(age::DecryptError::MissingPlugin { binary_name }) => Err(format!(
                     "No plugin found for {}: {}",
                     plugin_name, binary_name
                 )),
@@ -59,5 +58,4 @@ impl GenericIdentity {
             },
         }
     }
-    */
 }

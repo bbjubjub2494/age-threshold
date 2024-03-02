@@ -1,4 +1,5 @@
 use age_core::format::{FileKey, Stanza, AgeStanza};
+use age_core::secrecy::ExposeSecret;
 use cookie_factory::{WriteContext, GenResult};
 use nom_bufreader::bufreader::BufReader;
 use nom_bufreader::Parse;
@@ -25,12 +26,6 @@ use age_plugin_threshold::types::ThresholdIdentity;
 use age_plugin_threshold::types::ThresholdRecipient;
 
 
-struct EncShare {
-    index: u8,
-    stanzas: Vec<Stanza>,
-}
-
-/*
 fn read_text_file(path: &str) -> io::Result<Vec::<String>> {
 use std::io::BufReader;
     let file = File::open(path)?;
@@ -43,7 +38,6 @@ use std::io::BufReader;
     }
     Ok(v)
 }
-*/
 
 #[derive(clap::Parser)]
 #[command(name = "three")]
@@ -56,7 +50,7 @@ struct Cli {
     #[clap(short, long)]
     threshold: Option<usize>,
     #[clap(short, long)]
-    recipients: Vec<String>,
+    recipient: Vec<String>,
     #[clap(short, long)]
     identity: Vec<String>,
 }
@@ -83,8 +77,14 @@ fn main() -> io::Result<()> {
     let cmd = Cli::parse();
 
     let mut recipients = vec![];
-    for r in cmd.recipients {
+    for r in cmd.recipient {
                 recipients.push(GenericRecipient::from_bech32(r.as_str()).map_err(io::Error::other)?);
+    }
+
+    let mut identities = vec![];
+    for id in cmd.identity {
+        let lines = read_text_file(&id)?;
+                identities.push(GenericIdentity::from_bech32(&lines[0]).map_err(io::Error::other)?);
     }
 
     if cmd.encrypt && cmd.decrypt {
@@ -101,59 +101,86 @@ fn main() -> io::Result<()> {
     let callbacks = UiCallbacks{};
     let secret = FileKey::from([9; 16]);
     let shares = crypto::share_secret(&secret, threshold, recipients.len());
-    let mut enc_shares = vec![];
+    let mut shares_stanzas = vec![];
     for (r,s) in recipients.iter().zip(shares.iter()) {
         let recipient = r.to_recipient(callbacks).map_err(io::Error::other)?;
-        let stanzas = recipient.wrap_file_key(&s.file_key).map_err(io::Error::other)?;
-        enc_shares.push(EncShare{index: s.index, stanzas});
+        let mut r = recipient.wrap_file_key(&s.file_key).map_err(io::Error::other)?;
+        if r.len() != 1 {
+            return Err(io::Error::other("encryption produced multiple stanzas"));
+        }
+        let stanza = r.remove(0);
+        shares_stanzas.push(stanza);
     }
     let mut wc = cookie_factory::WriteContext{write: std::io::stdout(), position: 0};
-    wc = serialize(threshold, &enc_shares)(wc).map_err(io::Error::other)?;
+    wc = serialize(threshold, &shares_stanzas)(wc).map_err(io::Error::other)?;
     } else {
+    let callbacks = UiCallbacks{};
         let stdin = io::stdin();
         let mut reader = BufReader::new(stdin);
-        let stanzas = reader.parse(deserialize).map_err(|err| match err {
+        let prelude = reader.parse(deserialize).map_err(|err| match err {
             nom_bufreader::Error::Error(err) => io::Error::new(io::ErrorKind::InvalidData, "parse error"),
             nom_bufreader::Error::Failure(err) => io::Error::new(io::ErrorKind::InvalidData, "parse error"),
             nom_bufreader::Error::Io(err) => err,
             nom_bufreader::Error::Eof => io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected eof"),
         })?;
-        dbg!(stanzas);
+        dbg!(&prelude);
+        let mut shares = vec![];
+        for (i,s) in prelude.shares_stanzas.iter().enumerate() {
+            if shares.len() >= prelude.threshold {
+                break;
+            }
+            for identity in &identities {
+                match identity.to_identity(callbacks).map_err(io::Error::other)?.unwrap_stanza(&s) {
+                    Some(Ok(file_key)) => {
+                        let share = SecretShare{file_key, index: (i+1).try_into().unwrap()};
+                        shares.push(share);
+                        break;
+                    },
+                    Some(Err(err)) => return Err(io::Error::other(err)),
+                    None => continue,
+                }
+            }
+        }
+        dbg!(shares.len());
+        if shares.len() < prelude.threshold {
+            return Err(io::Error::other("not enough shares"));
+        }
+        let secret = crypto::reconstruct_secret(&shares);
+        dbg!(secret.expose_secret());
     }
 
     Ok(())
 }
 
-fn serialize<W: Write>(t: usize, enc_shares: &Vec<EncShare>) -> impl Fn(WriteContext<W>) -> GenResult<W> + '_ { move |mut wc| {
+#[derive(Debug)]
+struct Prelude {
+    threshold: usize,
+    shares_stanzas: Vec<Stanza>,
+}
+
+fn serialize<W: Write>(t: usize, shares_stanzas: &Vec<Stanza>) -> impl Fn(WriteContext<W>) -> GenResult<W> + '_ { move |mut wc| {
     wc = format::write::age_stanza("threshold", &[&t.to_string()], &[])(wc)?;
-    for es in enc_shares {
-        wc = format::write::age_stanza("share_index", &[&es.index.to_string()], &[])(wc)?;
-        for s in &es.stanzas {
+        for s in shares_stanzas {
             wc = format::write::age_stanza(&s.tag, &s.args, &s.body)(wc)?;
         }
-    }
     wc = slice(&b"---")(wc)?;
     Ok(wc)
     }
 }
 
-fn deserialize<'a>(input: &[u8]) -> nom::IResult<&[u8], Vec<Stanza>, nom::error::Error<Vec<u8>>> {
+fn deserialize<'a>(input: &[u8]) -> nom::IResult<&[u8], Prelude, nom::error::Error<Vec<u8>>> {
     match deserialize2(input) {
-        Ok((input, mut stanzas)) => Ok((input, stanzas.drain(..).map(|s| s.into()).collect())),
+        Ok((input, prelude)) => Ok((input, prelude)),
         Err(err) => Err(err.to_owned())
     }
 }
-fn deserialize2<'a>(input: &[u8]) -> nom::IResult<&[u8], Vec<AgeStanza>, nom::error::Error<&[u8]>> {
-    /*
-    (input, stanza) = format::read::age_stanza(input)?;
+fn deserialize2<'a>(input: &[u8]) -> nom::IResult<&[u8], Prelude, nom::error::Error<&[u8]>> {
+    let (input, stanza) = format::read::age_stanza(input)?;
     if stanza.tag != "threshold" {
-        return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
+        return Err(nom::Err::Failure(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
     }
-    */
-    // let t = stanza.args[0].parse::<usize>().map_err(|err| nom::error::Error::new(input, nom::error::ErrorKind::ParseInt))?;
-    let (input, (stanzas,_)) = nom::multi::many_till(format::read::age_stanza, tag("---"))(input)?;
-    dbg!(stanzas.len());
-    dbg!(input.len());
+    let threshold = stanza.args[0].parse::<usize>().map_err(|err| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Satisfy)))?;
+    let (input, (mut stanzas,_)) = nom::multi::many_till(format::read::age_stanza, tag("---"))(input)?;
     /*
     loop {
         match format::read::age_stanza(input) {
@@ -168,5 +195,5 @@ fn deserialize2<'a>(input: &[u8]) -> nom::IResult<&[u8], Vec<AgeStanza>, nom::er
         };
     }
     */
-    Ok((input, stanzas))
+    Ok((input, Prelude{threshold, shares_stanzas: stanzas.drain(..).map(|s| s.into()).collect()}))
 }

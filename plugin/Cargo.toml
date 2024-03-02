@@ -6,9 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-age = { version = "0.9.2", features = ["plugin", "ssh", "cli-common"] }
-age-core = "0.9.0"
-age-plugin = "0.4.0"
+age = { git = "https://github.com/bbjubjub2494/rage", version = "0.10.0", features = ["plugin", "ssh", "cli-common", "armor"] }
+age-core = { git = "https://github.com/bbjubjub2494/rage", version = "0.10.0" }
 bech32 = "0.9.1"
 clap = { version = "4.3.0", features = ["cargo", "derive"] }
 cookie-factory = "0.3.2"
