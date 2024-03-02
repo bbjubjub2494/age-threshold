@@ -2,13 +2,10 @@ use age_core::format::{FileKey, Stanza};
 use age_core::secrecy::ExposeSecret;
 use chacha20poly1305::AeadInPlace;
 use chacha20poly1305::KeyInit;
-use cookie_factory::combinator::slice;
-use cookie_factory::{GenResult, WriteContext};
 use nom_bufreader::bufreader::BufReader;
 use nom_bufreader::Parse;
 
 use age::cli_common::UiCallbacks;
-use age_core::format;
 use age_core::primitives::hkdf;
 use clap::{command, Parser};
 use rand::rngs::OsRng;
@@ -19,6 +16,7 @@ use std::io::prelude::*;
 use std::string::String;
 
 use age_plugin_threshold::crypto;
+use age_plugin_threshold::format;
 
 use age_plugin_threshold::types::GenericIdentity;
 use age_plugin_threshold::types::GenericRecipient;
@@ -61,8 +59,6 @@ struct Cli {
     #[clap(short, long)]
     identity: Vec<String>,
 }
-
-use nom::bytes::streaming::tag;
 
 fn main() -> io::Result<()> {
     /* AGE:
@@ -123,8 +119,9 @@ fn main() -> io::Result<()> {
             shares_stanzas.push(stanza);
         }
         let out = std::io::stdout();
-        let (mut out, _) = cookie_factory::gen(serialize(threshold, &shares_stanzas), out)
-            .map_err(io::Error::other)?;
+        let (mut out, _) =
+            cookie_factory::gen(format::write::header(threshold, &shares_stanzas), out)
+                .map_err(io::Error::other)?;
 
         // TODO: handle multiple chunks
         let mut buf = vec![0; CHUNK_SIZE];
@@ -141,7 +138,10 @@ fn main() -> io::Result<()> {
     } else {
         let callbacks = UiCallbacks {};
         let mut stdin = BufReader::new(io::stdin());
-        let prelude = stdin.parse(deserialize).map_err(|err| match err {
+        fn header(input: &[u8]) -> nom::IResult<&[u8], format::Header, nom::error::Error<Vec<u8>>> {
+            format::read::header(input).map_err(|err| err.to_owned())
+        }
+        let header = stdin.parse(header).map_err(|err| match err {
             nom_bufreader::Error::Error(_) => {
                 io::Error::new(io::ErrorKind::InvalidData, "parse error")
             }
@@ -153,10 +153,9 @@ fn main() -> io::Result<()> {
                 io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected eof")
             }
         })?;
-        dbg!(&prelude);
         let mut shares = vec![];
-        for (i, s) in prelude.shares_stanzas.iter().enumerate() {
-            if shares.len() >= prelude.threshold {
+        for (i, s) in header.shares_stanzas.iter().enumerate() {
+            if shares.len() >= header.threshold {
                 break;
             }
             for identity in &identities {
@@ -179,7 +178,7 @@ fn main() -> io::Result<()> {
             }
         }
         dbg!(shares.len());
-        if shares.len() < prelude.threshold {
+        if shares.len() < header.threshold {
             return Err(io::Error::other("not enough shares"));
         }
         let file_key = crypto::reconstruct_secret(&shares);
@@ -196,69 +195,4 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
-}
-
-#[derive(Debug)]
-struct Prelude {
-    threshold: usize,
-    shares_stanzas: Vec<Stanza>,
-}
-
-fn serialize<W: Write>(
-    t: usize,
-    shares_stanzas: &Vec<Stanza>,
-) -> impl Fn(WriteContext<W>) -> GenResult<W> + '_ {
-    move |mut wc| {
-        wc = format::write::age_stanza("threshold", &[&t.to_string()], &[])(wc)?;
-        for s in shares_stanzas {
-            wc = format::write::age_stanza(&s.tag, &s.args, &s.body)(wc)?;
-        }
-        wc = slice(&b"---")(wc)?;
-        Ok(wc)
-    }
-}
-
-fn deserialize<'a>(input: &[u8]) -> nom::IResult<&[u8], Prelude, nom::error::Error<Vec<u8>>> {
-    match deserialize2(input) {
-        Ok((input, prelude)) => Ok((input, prelude)),
-        Err(err) => Err(err.to_owned()),
-    }
-}
-fn deserialize2<'a>(input: &[u8]) -> nom::IResult<&[u8], Prelude, nom::error::Error<&[u8]>> {
-    let (input, stanza) = format::read::age_stanza(input)?;
-    if stanza.tag != "threshold" {
-        return Err(nom::Err::Failure(nom::error::Error::new(
-            input,
-            nom::error::ErrorKind::Tag,
-        )));
-    }
-    let threshold = stanza.args[0].parse::<usize>().map_err(|_| {
-        nom::Err::Error(nom::error::Error::new(
-            input,
-            nom::error::ErrorKind::Satisfy,
-        ))
-    })?;
-    let (input, (mut stanzas, _)) =
-        nom::multi::many_till(format::read::age_stanza, tag("---"))(input)?;
-    /*
-    loop {
-        match format::read::age_stanza(input) {
-            Ok((input_, stanza)) => {
-                input = input_;
-                dbg!(stanzas.len());
-                dbg!(input.len());
-                stanzas.push(stanza.into());
-            },
-            Err(nom::Err::Incomplete(needed)) => return Err(nom::Err::Incomplete(needed)),
-            Err(err) => { dbg!(err); break; }
-        };
-    }
-    */
-    Ok((
-        input,
-        Prelude {
-            threshold,
-            shares_stanzas: stanzas.drain(..).map(|s| s.into()).collect(),
-        },
-    ))
 }
