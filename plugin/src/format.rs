@@ -57,13 +57,13 @@ pub mod write {
 
     use std::io::Write;
 
-    use super::{Header, Stanza, VERSION_LINE};
+    use super::{Stanza, VERSION_LINE};
 
-    fn version_line<W: Write>(mut wc: WriteContext<W>) -> GenResult<W> {
+    fn version_line<W: Write>(wc: WriteContext<W>) -> GenResult<W> {
         slice(VERSION_LINE)(wc)
     }
 
-    fn hmac_line<W: Write>(mut wc: WriteContext<W>) -> GenResult<W> {
+    fn hmac_line<W: Write>(wc: WriteContext<W>) -> GenResult<W> {
         // TODO: do the HMAC
         slice("---\n")(wc)
     }
