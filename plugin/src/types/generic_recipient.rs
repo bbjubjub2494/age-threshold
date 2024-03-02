@@ -1,9 +1,8 @@
 use bech32::{FromBase32, ToBase32, Variant};
-use rlp::{RlpDecodable, RlpEncodable};
 use std::str::FromStr;
 
 /// Represents any Age recipient, whether native or plugin.
-#[derive(Debug, PartialEq, Clone, RlpEncodable, RlpDecodable)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct GenericRecipient {
     pub plugin: Option<String>,
     pub data: Vec<u8>,

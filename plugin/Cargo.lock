@@ -40,7 +40,8 @@ dependencies = [
 [[package]]
 name = "age"
 version = "0.10.0"
-source = "git+https://github.com/bbjubjub2494/rage#367d5fb44c91e63fb73b858d8aa682fda261a597"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edeef7d7b199195a2d7d7a8155d2d04aee736e60c5c7bdd7097d115369a8817d"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -80,7 +81,8 @@ dependencies = [
 [[package]]
 name = "age-core"
 version = "0.10.0"
-source = "git+https://github.com/bbjubjub2494/rage#367d5fb44c91e63fb73b858d8aa682fda261a597"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5f11899bc2bbddd135edbc30c36b1924fa59d0746bb45beb5933fafe3fe509b"
 dependencies = [
  "base64",
  "chacha20poly1305",
@@ -102,7 +104,6 @@ dependencies = [
  "age",
  "age-core",
  "bech32",
- "ch",
  "chacha20poly1305",
  "clap",
  "cookie-factory",
@@ -111,8 +112,6 @@ dependencies = [
  "nom",
  "nom-bufreader",
  "rand",
- "rlp",
- "tempfile",
 ]
 
 [[package]]
@@ -262,12 +261,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
-name = "bytes"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2bd12c1caf447e69cd4528f47f94d203fd2582878ecb9e9465484c4148a8223"
-
-[[package]]
 name = "cbc"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -281,12 +274,6 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
-
-[[package]]
-name = "ch"
-version = "0.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8da3c7791c16a7e38d6bc6bc7f92c2d8a69fb9a4f1b41d6d8e7de8ea39cc270"
 
 [[package]]
 name = "chacha20"
@@ -1320,28 +1307,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rlp"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb919243f34364b6bd2fc10ef797edbfa75f33c252e7998527479c6d6b47e1ec"
-dependencies = [
- "bytes",
- "rlp-derive",
- "rustc-hex",
-]
-
-[[package]]
-name = "rlp-derive"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e33d7b2abe0c340d8797fe2907d3f20d3b5ea5908683618bfe80df7f621f672a"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "rpassword"
 version = "7.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1421,12 +1386,6 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
-
-[[package]]
-name = "rustc-hex"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e75f6a532d0fd9f7f13144f392b6ad56a32696bfcd9c78f797f16bbb6f072d6"
 
 [[package]]
 name = "rustc_version"

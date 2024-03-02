@@ -8,7 +8,6 @@ use chacha20poly1305::KeyInit;
 use chacha20poly1305::AeadInPlace;
 
 use age::Identity;
-use age::keys;
 use age_core::format;
 use age::cli_common::UiCallbacks;
 use clap::{Parser,ArgAction::SetTrue, arg, command, Command};
@@ -24,12 +23,9 @@ use rand::RngCore;
 use age_core::primitives::hkdf;
 
 use age_plugin_threshold::crypto::{self, SecretShare};
-use rlp::{Decodable, Encodable, RlpDecodable, RlpEncodable, RlpStream};
 
 use age_plugin_threshold::types::GenericIdentity;
 use age_plugin_threshold::types::GenericRecipient;
-use age_plugin_threshold::types::ThresholdIdentity;
-use age_plugin_threshold::types::ThresholdRecipient;
 
 const PAYLOAD_KEY_LABEL: &[u8] = b"payload";
 const NONCE_SIZE: usize = 16;

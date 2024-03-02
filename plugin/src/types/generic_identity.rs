@@ -1,9 +1,8 @@
 use bech32::{self, FromBase32, ToBase32, Variant};
-use rlp::{RlpDecodable, RlpEncodable};
 use std::str::FromStr;
 
 /// Represents any Age identity, whether native or plugin.
-#[derive(Clone, Debug, PartialEq, RlpEncodable, RlpDecodable)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct GenericIdentity {
     pub plugin: Option<String>,
     pub data: Vec<u8>,
