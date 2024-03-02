@@ -9,14 +9,11 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
     let tmp_dir = tempdir()?;
     std::env::set_current_dir(&tmp_dir)?;
 
-    fn plugin() -> Command {
-        Command::new("age-plugin-threshold")
+    fn three() -> Command {
+        Command::new("three")
     }
     fn keygen() -> Command {
         Command::new("age-keygen")
-    }
-    fn age() -> Command {
-        Command::new("age")
     }
 
     for i in 1..=3 {
@@ -34,7 +31,7 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     {
-        let mut cmd = plugin();
+        let mut cmd = three();
         cmd.arg("-t")
             .arg("2")
             .stdin(Stdio::piped())
@@ -52,7 +49,7 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
     remove_file("key2.txt")?;
 
     {
-        let mut cmd = plugin();
+        let mut cmd = three();
         cmd.arg("-d")
             .arg("-i")
             .arg("key1.txt")
