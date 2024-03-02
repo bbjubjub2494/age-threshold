@@ -1,4 +1,4 @@
-use age_core::format::{FileKey, Stanza};
+use age_core::format::FileKey;
 use age_core::secrecy::ExposeSecret;
 use chacha20poly1305::AeadInPlace;
 use chacha20poly1305::KeyInit;
@@ -58,66 +58,59 @@ struct Cli {
     recipient: Vec<String>,
     #[clap(short, long)]
     identity: Vec<String>,
+    #[clap(short, long)]
+    armor: bool,
+    #[clap(short, long)]
+    passphrase: bool,
+    #[clap(short = 'R', long)]
+    recipients_file: Vec<String>,
+
+    input: Option<String>,
 }
 
-fn main() -> io::Result<()> {
-    /* AGE:
-     * Usage:
-     *    age [--encrypt] (-r RECIPIENT | -R PATH)... [--armor] [-o OUTPUT] [INPUT]
-     *    age [--encrypt] --passphrase [--armor] [-o OUTPUT] [INPUT]
-     *    age --decrypt [-i PATH]... [-o OUTPUT] [INPUT]
-     *
-     * Options:
-     *    -e, --encrypt               Encrypt the input to the output. Default if omitted.
-     *    -d, --decrypt               Decrypt the input to the output.
-     *    -o, --output OUTPUT         Write the result to the file at path OUTPUT.
-     *    -a, --armor                 Encrypt to a PEM encoded format.
-     *    -p, --passphrase            Encrypt with a passphrase.
-     *    -r, --recipient RECIPIENT   Encrypt to the specified RECIPIENT. Can be repeated.
-     *    -R, --recipients-file PATH  Encrypt to recipients listed at PATH. Can be repeated.
-     *    -i, --identity PATH         Use the identity file at PATH. Can be repeated.
-     */
-    let cmd = Cli::parse();
+impl Cli {
+    fn main(&self) -> io::Result<()> {
+        if self.encrypt && self.decrypt {
+            return Err(io::Error::other(
+                "cannot encrypt and decrypt at the same time",
+            ));
+        }
 
-    let mut recipients = vec![];
-    for r in cmd.recipient {
-        recipients.push(GenericRecipient::from_bech32(r.as_str()).map_err(io::Error::other)?);
+        if self.decrypt {
+            self.do_decrypt()
+        } else {
+            self.do_encrypt()
+        }
     }
 
-    let mut identities = vec![];
-    for id in cmd.identity {
-        let lines = read_text_file(&id)?;
-        identities.push(GenericIdentity::from_bech32(&lines[0]).map_err(io::Error::other)?);
-    }
-
-    if cmd.encrypt && cmd.decrypt {
-        return Err(io::Error::other(
-            "cannot encrypt and decrypt at the same time",
-        ));
-    }
-
-    if !cmd.decrypt {
-        let threshold = cmd.threshold.unwrap_or(recipients.len() / 2 + 1);
+    fn do_encrypt(&self) -> io::Result<()> {
+        let mut recipients = vec![];
+        for r in &self.recipient {
+            recipients.push(GenericRecipient::from_bech32(r.as_str()).map_err(io::Error::other)?);
+        }
+        let threshold = self.threshold.unwrap_or(recipients.len() / 2 + 1);
 
         if recipients.len() < threshold {
             return Err(io::Error::other("not enough recipients"));
         }
 
-        let callbacks = UiCallbacks {};
         let file_key = new_file_key();
         let shares = crypto::share_secret(&file_key, threshold, recipients.len());
         let mut shares_stanzas = vec![];
         for (r, s) in recipients.iter().zip(shares.iter()) {
-            let recipient = r.to_recipient(callbacks).map_err(io::Error::other)?;
+            let recipient = r.to_recipient(UiCallbacks {}).map_err(io::Error::other)?;
             let mut r = recipient
                 .wrap_file_key(&s.file_key)
                 .map_err(io::Error::other)?;
-            if r.len() != 1 {
-                return Err(io::Error::other("encryption produced multiple stanzas"));
+            match r.len() {
+                0 => return Err(io::Error::other("plugin produced no stanzas")),
+                1 => (),
+                _ => return Err(io::Error::other("plugin produced multiple stanzas")),
             }
             let stanza = r.remove(0);
             shares_stanzas.push(stanza);
         }
+
         let out = std::io::stdout();
         let (mut out, _) =
             cookie_factory::gen(format::write::header(threshold, &shares_stanzas), out)
@@ -135,8 +128,17 @@ fn main() -> io::Result<()> {
             .map_err(|err| io::Error::other(err))?;
         out.write_all(&nonce)?;
         out.write_all(&buf)?;
-    } else {
-        let callbacks = UiCallbacks {};
+
+        Ok(())
+    }
+
+    fn do_decrypt(&self) -> io::Result<()> {
+        let mut identities = vec![];
+        for id in &self.identity {
+            let lines = read_text_file(&id)?;
+            identities.push(GenericIdentity::from_bech32(&lines[0]).map_err(io::Error::other)?);
+        }
+
         let mut stdin = BufReader::new(io::stdin());
         fn header(input: &[u8]) -> nom::IResult<&[u8], format::Header, nom::error::Error<Vec<u8>>> {
             format::read::header(input).map_err(|err| err.to_owned())
@@ -153,6 +155,7 @@ fn main() -> io::Result<()> {
                 io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected eof")
             }
         })?;
+
         let mut shares = vec![];
         for (i, s) in header.shares_stanzas.iter().enumerate() {
             if shares.len() >= header.threshold {
@@ -160,7 +163,7 @@ fn main() -> io::Result<()> {
             }
             for identity in &identities {
                 match identity
-                    .to_identity(callbacks)
+                    .to_identity(UiCallbacks {})
                     .map_err(io::Error::other)?
                     .unwrap_stanza(&s)
                 {
@@ -177,11 +180,11 @@ fn main() -> io::Result<()> {
                 }
             }
         }
-        dbg!(shares.len());
         if shares.len() < header.threshold {
             return Err(io::Error::other("not enough shares"));
         }
         let file_key = crypto::reconstruct_secret(&shares);
+
         let mut nonce = [0; NONCE_SIZE];
         stdin.read_exact(&mut nonce)?;
         let payload_key = hkdf(nonce.as_ref(), PAYLOAD_KEY_LABEL, file_key.expose_secret()).into();
@@ -192,7 +195,13 @@ fn main() -> io::Result<()> {
         aead.decrypt_in_place((&[0; 12]).into(), b"", &mut buf)
             .map_err(|err| io::Error::other(err))?;
         io::stdout().write_all(&buf)?;
-    }
 
-    Ok(())
+        Ok(())
+    }
+}
+
+fn main() -> io::Result<()> {
+    let cmd = Cli::parse();
+
+    cmd.main()
 }
