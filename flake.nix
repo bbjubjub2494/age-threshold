@@ -27,11 +27,19 @@
         # module parameters provide easy access to attributes of the same
         # system.
 
-        packages.plugin = pkgs.rustPlatform.buildRustPackage {
-          name = "age-plugin-threshold";
-          src = ./plugin;
+        packages.age-threshold = pkgs.rustPlatform.buildRustPackage {
+          name = "age-threshold";
+          src = ./age-threshold;
 
-          cargoHash = "sha256-bH4TIcJFMWm5AnbKh+XVPRXMwgEAu/2geDuob1o4H0o=";
+          cargoHash = "sha256-bH4aIcJFMWm5AnbKh+XVPRXMwgEAu/2geDuob1o4H0o=";
+        };
+
+        packages.three = pkgs.rustPlatform.buildRustPackage {
+          name = "age-threshold";
+          srcs = [./age-threshold ./three];
+          sourceRoot = "three";
+
+          cargoHash = "sha256-nO9BQkqcoVDlcEbKKgLdaN43pvlW7gs+32WJdNh0RrI=";
         };
 
         checks.e2e = pkgs.rustPlatform.buildRustPackage {
@@ -40,7 +48,7 @@
 
           cargoHash = "sha256-Lh15x4l/c7lDrHSLJ16XS6qFnml9WtbuPmVNt7YSHac=";
 
-          nativeCheckInputs = [packages.plugin pkgs.age];
+          nativeCheckInputs = [packages.three pkgs.age];
         };
 
         formatter = pkgs.alejandra;
