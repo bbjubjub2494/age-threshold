@@ -1,6 +1,6 @@
 use std::fs::{File,remove_file};
 use std::io::Write;
-use std::process::Command;
+use std::process::{Command,Stdio};
 
 use tempfile::tempdir;
 
@@ -37,11 +37,18 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
         let mut cmd = plugin();
         cmd
             .arg("-t").arg("2")
+            .stdin(Stdio::piped())
             .stdout(File::create("test.age")?);
         for r in recipients {
             cmd.args(&["-r", &r]);
         }
-        assert!(cmd.status()?.success());
+        let mut child = cmd.spawn()?;
+        let mut stdin = child.stdin.take().expect("Failed to open stdin");
+        let t = std::thread::spawn(move || {
+            stdin.write_all(b"test")
+        });
+        assert!(child.wait()?.success());
+        t.join().unwrap()?;
     }
 
     remove_file("key2.txt")?;
@@ -49,7 +56,6 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mut cmd = plugin();
         cmd.arg("-d").arg("-i").arg("key1.txt").arg("-i").arg("key3.txt").stdin(File::open("test.age")?);
-        dbg!(cmd.output()?.stdout);
         assert!(cmd.output()?.stdout == b"test");
     }
 

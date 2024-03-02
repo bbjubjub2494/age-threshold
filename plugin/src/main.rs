@@ -32,6 +32,8 @@ use age_plugin_threshold::types::ThresholdIdentity;
 use age_plugin_threshold::types::ThresholdRecipient;
 
 const PAYLOAD_KEY_LABEL: &[u8] = b"payload";
+const NONCE_SIZE: usize = 16;
+const CHUNK_SIZE: usize = 64*1024;
 
 fn read_text_file(path: &str) -> io::Result<Vec::<String>> {
 use std::io::BufReader;
@@ -128,9 +130,10 @@ fn main() -> io::Result<()> {
     let (mut out,_) = cookie_factory::gen(serialize(threshold, &shares_stanzas), out).map_err(io::Error::other)?;
 
     // TODO: handle multiple chunks
-    let mut buf = vec![0;64*1024];
-    std::io::stdin().read(&mut buf[..])?;
-        let mut nonce = [0;16];
+    let mut buf = vec![0;CHUNK_SIZE];
+    let n = std::io::stdin().read(&mut buf[..])?;
+    buf.truncate(n);
+        let mut nonce = [0;NONCE_SIZE];
         OsRng.fill_bytes(&mut nonce);
         let payload_key = hkdf(nonce.as_ref(), PAYLOAD_KEY_LABEL, file_key.expose_secret()).into();
         let aead = chacha20poly1305::ChaCha20Poly1305::new(&payload_key);
@@ -169,8 +172,16 @@ fn main() -> io::Result<()> {
         if shares.len() < prelude.threshold {
             return Err(io::Error::other("not enough shares"));
         }
-        let secret = crypto::reconstruct_secret(&shares);
-        dbg!(secret.expose_secret());
+        let file_key = crypto::reconstruct_secret(&shares);
+        let mut nonce = [0;NONCE_SIZE];
+        reader.read_exact(&mut nonce)?;
+        let payload_key = hkdf(nonce.as_ref(), PAYLOAD_KEY_LABEL, file_key.expose_secret()).into();
+        let aead = chacha20poly1305::ChaCha20Poly1305::new(&payload_key);
+    let mut buf = vec![0;CHUNK_SIZE];
+    let n = reader.read(&mut buf[..])?;
+    buf.truncate(n);
+        aead.decrypt_in_place((&[0;12]).into(), b"", &mut buf).map_err(|err| io::Error::other(err))?;
+        io::stdout().write_all(&buf)?;
     }
 
     Ok(())
