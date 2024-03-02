@@ -1,4 +1,4 @@
-use age_core::format::{AgeStanza, FileKey, Stanza};
+use age_core::format::{FileKey, Stanza};
 use age_core::secrecy::ExposeSecret;
 use chacha20poly1305::AeadInPlace;
 use chacha20poly1305::KeyInit;
@@ -8,21 +8,17 @@ use nom_bufreader::bufreader::BufReader;
 use nom_bufreader::Parse;
 
 use age::cli_common::UiCallbacks;
-use age::Identity;
 use age_core::format;
 use age_core::primitives::hkdf;
-use clap::{arg, command, ArgAction::SetTrue, Command, Parser};
+use clap::{command, Parser};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
-use std::str::FromStr;
 use std::string::String;
-use std::sync::mpsc::{Receiver, Sender};
 
-use age_plugin_threshold::crypto::{self, SecretShare};
+use age_plugin_threshold::crypto;
 
 use age_plugin_threshold::types::GenericIdentity;
 use age_plugin_threshold::types::GenericRecipient;
@@ -144,13 +140,12 @@ fn main() -> io::Result<()> {
         out.write_all(&buf)?;
     } else {
         let callbacks = UiCallbacks {};
-        let stdin = io::stdin();
-        let mut reader = BufReader::new(stdin);
-        let prelude = reader.parse(deserialize).map_err(|err| match err {
-            nom_bufreader::Error::Error(err) => {
+        let mut stdin = BufReader::new(io::stdin());
+        let prelude = stdin.parse(deserialize).map_err(|err| match err {
+            nom_bufreader::Error::Error(_) => {
                 io::Error::new(io::ErrorKind::InvalidData, "parse error")
             }
-            nom_bufreader::Error::Failure(err) => {
+            nom_bufreader::Error::Failure(_) => {
                 io::Error::new(io::ErrorKind::InvalidData, "parse error")
             }
             nom_bufreader::Error::Io(err) => err,
@@ -171,7 +166,7 @@ fn main() -> io::Result<()> {
                     .unwrap_stanza(&s)
                 {
                     Some(Ok(file_key)) => {
-                        let share = SecretShare {
+                        let share = crypto::SecretShare {
                             file_key,
                             index: (i + 1).try_into().unwrap(),
                         };
@@ -189,11 +184,11 @@ fn main() -> io::Result<()> {
         }
         let file_key = crypto::reconstruct_secret(&shares);
         let mut nonce = [0; NONCE_SIZE];
-        reader.read_exact(&mut nonce)?;
+        stdin.read_exact(&mut nonce)?;
         let payload_key = hkdf(nonce.as_ref(), PAYLOAD_KEY_LABEL, file_key.expose_secret()).into();
         let aead = chacha20poly1305::ChaCha20Poly1305::new(&payload_key);
         let mut buf = vec![0; CHUNK_SIZE];
-        let n = reader.read(&mut buf[..])?;
+        let n = stdin.read(&mut buf[..])?;
         buf.truncate(n);
         aead.decrypt_in_place((&[0; 12]).into(), b"", &mut buf)
             .map_err(|err| io::Error::other(err))?;
@@ -237,7 +232,7 @@ fn deserialize2<'a>(input: &[u8]) -> nom::IResult<&[u8], Prelude, nom::error::Er
             nom::error::ErrorKind::Tag,
         )));
     }
-    let threshold = stanza.args[0].parse::<usize>().map_err(|err| {
+    let threshold = stanza.args[0].parse::<usize>().map_err(|_| {
         nom::Err::Error(nom::error::Error::new(
             input,
             nom::error::ErrorKind::Satisfy,
