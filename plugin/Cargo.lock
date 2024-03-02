@@ -71,7 +71,7 @@ dependencies = [
  "rpassword",
  "rsa",
  "rust-embed",
- "scrypt",
+ "scrypt 0.10.0",
  "sha2",
  "subtle",
  "which",
@@ -118,14 +118,21 @@ dependencies = [
  "age-core",
  "age-plugin",
  "bech32",
+ "chacha20poly1305",
  "clap",
  "cookie-factory",
  "gf256",
  "hex-literal",
+ "hmac",
  "nom",
  "nom-bufreader",
+ "pin-project",
+ "rand 0.8.5",
  "rlp",
+ "scrypt 0.11.0",
+ "sha2",
  "tempfile",
+ "zeroize",
 ]
 
 [[package]]
@@ -244,7 +251,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3806a8db60cf56efee531616a34a6aaa9a114d6da2add861b0fa4a188881b2c7"
 dependencies = [
  "blowfish",
- "pbkdf2",
+ "pbkdf2 0.11.0",
  "sha2",
 ]
 
@@ -1219,12 +1226,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "password-hash"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "346f04948ba92c43e8469c1ee6736c7563d71012b17d40745260fe106aac2166"
+dependencies = [
+ "base64ct",
+ "rand_core 0.6.4",
+ "subtle",
+]
+
+[[package]]
 name = "pbkdf2"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83a0692ec44e4cf1ef28ca317f14f8f07da2d95ec3fa01f86e4467b725e60917"
 dependencies = [
  "digest 0.10.7",
+]
+
+[[package]]
+name = "pbkdf2"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
+dependencies = [
+ "digest 0.10.7",
+ "hmac",
 ]
 
 [[package]]
@@ -1603,7 +1631,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f9e24d2b632954ded8ab2ef9fea0a0c769ea56ea98bddbafbad22caeeadf45d"
 dependencies = [
  "hmac",
- "pbkdf2",
+ "pbkdf2 0.11.0",
+ "salsa20",
+ "sha2",
+]
+
+[[package]]
+name = "scrypt"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0516a385866c09368f0b5bcd1caff3366aace790fcd46e2bb032697bb172fd1f"
+dependencies = [
+ "password-hash",
+ "pbkdf2 0.12.2",
  "salsa20",
  "sha2",
 ]
