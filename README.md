@@ -8,3 +8,7 @@ multiple keys need to cooperate
 in order to decrypt.
 
 [Age]: https://age-encryption.org
+
+## Alternatives
+
+[`age-plugin-sss`](https://github.com/olastor/age-plugin-sss)
