@@ -1,86 +1,109 @@
 use age_core::format::{FileKey, FILE_KEY_BYTES};
 use age_core::secrecy::{ExposeSecret, Secret, Zeroize};
-use gf256::shamir::shamir;
+use curve25519_dalek::scalar::Scalar;
+use curve25519_dalek::ristretto::RistrettoPoint;
+use rand::rngs::OsRng;
+use sha2::Sha512;
 
-use std::fmt;
 
+fn commit(s: &Scalar, t: &Scalar) -> RistrettoPoint {
+    // FIXME: pre-compute
+let G = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator G");
+let H = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator H");
+    G * s + H * t
+}
+
+fn encode(fk: &FileKey) -> Scalar {
+    let mut buf = [0u8; 32];
+    // 128-bit file keys fit snugly in the low-order bytes.
+    buf[..FILE_KEY_BYTES].copy_from_slice(fk.expose_secret());
+    let s = Scalar::from_bytes_mod_order(buf);
+    buf.zeroize();
+    s
+}
+
+fn decode(s: &Scalar) -> FileKey {
+    let mut buf = [0u8; FILE_KEY_BYTES];
+    buf.copy_from_slice(&s.as_bytes()[..FILE_KEY_BYTES]);
+    FileKey::from(buf)
+}
+
+fn poly_eval(coeffs: &[Scalar], x: Scalar) -> Scalar {
+    let mut r = Scalar::ZERO;
+    let mut acc = Scalar::ONE;
+    for (j, c) in coeffs.iter().enumerate() {
+        r += c * acc;
+        acc *= x;
+    }
+    r
+}
+
+#[derive(Debug)]
 pub struct SecretShare {
-    pub index: u8,
-    pub file_key: FileKey,
+    pub index: u32,
+    pub s: Scalar,
+    pub t: Scalar,
 }
 
-impl fmt::Debug for SecretShare {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SecretShare")
-            .field("index", &self.index)
-            .field("file_key", &self.file_key.expose_secret()) // FIXME: dont
-            .finish()
+pub fn share_secret(fk: &FileKey, k: u32, n: u32) -> (Vec<SecretShare>, Vec<RistrettoPoint>) {
+    let s0 = encode(fk);
+    let s_coeffs: Vec<_> = (0..k).map(|i| if i == 0 { s0 } else { Scalar::random(&mut OsRng) }).collect();
+    let t_coeffs: Vec<_> = (0..k).map(|_| Scalar::random(&mut OsRng)).collect();
+
+    let mut shares = vec![];
+    for index in 0..n {
+        let s = poly_eval(&s_coeffs, Scalar::from(index));
+        let t = poly_eval(&t_coeffs, Scalar::from(index));
+        let share = SecretShare { index, s, t };
+        shares.push(share);
     }
+
+    let coeff_commitments = s_coeffs.iter().zip(t_coeffs.iter()).map(|(s, t)| commit(s, t)).collect();
+    (shares, coeff_commitments)
 }
 
-impl ExposeSecret<[u8; FILE_KEY_BYTES]> for SecretShare {
-    fn expose_secret(&self) -> &[u8; FILE_KEY_BYTES] {
-        self.file_key.expose_secret()
+pub fn verify_share(share: SecretShare, coeff_commitments: &Vec<RistrettoPoint>) -> bool {
+    let lhs = commit(&share.s, &share.t);
+    let mut rhs = coeff_commitments[0];
+    let mut acc = Scalar::ONE;
+    for (j, c) in coeff_commitments[1..].iter().enumerate() {
+        acc *= Scalar::from(share.index);
+        rhs += c * acc;
     }
-}
-
-pub fn share_secret(fk: &FileKey, t: usize, n: usize) -> Vec<SecretShare> {
-    shamir::generate(fk.expose_secret(), n, t)
-        .iter_mut()
-        .enumerate()
-        .map(|(i, share)| {
-            assert!(share.len() == FILE_KEY_BYTES + 1);
-            let index: u8 = share[0];
-            assert!(usize::from(index) == i + 1);
-            let mut buf = [0u8; FILE_KEY_BYTES];
-            buf.copy_from_slice(&share[1..]);
-            share.zeroize();
-            SecretShare {
-                index,
-                file_key: FileKey::from(buf),
-            }
-        })
-        .collect()
+    lhs == rhs
 }
 
 pub fn reconstruct_secret(shares: &[SecretShare]) -> FileKey {
-    assert!(shares.len() > 0);
-    let bufs = shares
-        .iter()
-        .map(|share| {
-            dbg!(share);
-            let mut buf = [0u8; FILE_KEY_BYTES + 1];
-            buf[0] = share.index;
-            buf[1..].copy_from_slice(share.file_key.expose_secret());
-            Secret::from(buf)
-        })
-        .collect::<Vec<_>>();
-    let mut secret = shamir::reconstruct(
-        bufs.iter()
-            .map(|buf| buf.expose_secret())
-            .collect::<Vec<_>>()
-            .as_slice(),
-    );
-    let mut buf = [0u8; FILE_KEY_BYTES];
-    buf.copy_from_slice(&secret[..]);
-    secret.zeroize();
-    FileKey::from(buf)
+    todo!();
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{reconstruct_secret, share_secret};
+    use super::{share_secret, reconstruct_secret, verify_share, SecretShare};
     use age_core::format::{FileKey, FILE_KEY_BYTES};
     use age_core::secrecy::ExposeSecret;
 
     #[test]
     fn test_reconstruct_example() {
-        let actual = [0xa; FILE_KEY_BYTES];
+        let actual = [0x9; FILE_KEY_BYTES];
         let t = 3;
         let n = 5;
-        let shares = share_secret(&FileKey::from(actual), t, n);
+        let (shares,_) = share_secret(&FileKey::from(actual), t, n);
+
         let result = reconstruct_secret(&shares[..]);
         let expected = result.expose_secret();
         assert_eq!(&actual, expected);
+    }
+
+    #[test]
+    fn test_verify_shares() {
+        let actual = [0x9; FILE_KEY_BYTES];
+        let t = 3;
+        let n = 5;
+        let (shares, commitments) = share_secret(&FileKey::from(actual), t, n);
+
+        for share in shares {
+            assert!(verify_share(share, &commitments));
+        }
     }
 }

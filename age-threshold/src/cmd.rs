@@ -52,7 +52,7 @@ pub struct Cli {
     #[clap(short, long)]
     decrypt: bool,
     #[clap(short, long)]
-    threshold: Option<usize>,
+    threshold: Option<u32>,
     #[clap(short, long)]
     recipient: Vec<String>,
     #[clap(short, long)]
@@ -87,19 +87,20 @@ impl Cli {
         for r in &self.recipient {
             recipients.push(GenericRecipient::from_bech32(r.as_str()).map_err(io::Error::other)?);
         }
-        let threshold = self.threshold.unwrap_or(recipients.len() / 2 + 1);
+        let n = recipients.len() as u32;
+        let threshold = self.threshold.unwrap_or(n / 2 + 1);
 
-        if recipients.len() < threshold {
+        if n < threshold {
             return Err(io::Error::other("not enough recipients"));
         }
 
         let file_key = new_file_key();
-        let shares = crypto::share_secret(&file_key, threshold, recipients.len());
+        let shares = crypto::share_secret(&file_key, threshold, n).0;
         let mut shares_stanzas = vec![];
         for (r, s) in recipients.iter().zip(shares.iter()) {
             let recipient = r.to_recipient(UiCallbacks {}).map_err(io::Error::other)?;
             let mut r = recipient
-                .wrap_file_key(&s.file_key)
+                .wrap_file_key(todo!())
                 .map_err(io::Error::other)?;
             match r.len() {
                 0 => return Err(io::Error::other("plugin produced no stanzas")),
@@ -112,7 +113,7 @@ impl Cli {
 
         let out = std::io::stdout();
         let (mut out, _) =
-            cookie_factory::gen(format::write::header(threshold, &shares_stanzas), out)
+            cookie_factory::gen(format::write::header(threshold as usize, &shares_stanzas), out)
                 .map_err(io::Error::other)?;
 
         // TODO: handle multiple chunks
@@ -168,7 +169,8 @@ impl Cli {
                 {
                     Some(Ok(file_key)) => {
                         let share = crypto::SecretShare {
-                            file_key,
+                            s: todo!(),
+                            t: todo!(),
                             index: (i + 1).try_into().unwrap(),
                         };
                         shares.push(share);
