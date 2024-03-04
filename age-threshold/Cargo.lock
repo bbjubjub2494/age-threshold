@@ -111,6 +111,7 @@ dependencies = [
  "hex-literal",
  "nom",
  "nom-bufreader",
+ "once_cell",
  "rand",
  "sha2",
 ]

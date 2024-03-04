@@ -4,12 +4,16 @@ use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::ristretto::RistrettoPoint;
 use rand::rngs::OsRng;
 use sha2::Sha512;
+use once_cell::sync::Lazy;
 
+static generators: Lazy<(RistrettoPoint,RistrettoPoint)> = Lazy::new(|| {
+    let G = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator G");
+    let H = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator H");
+    (G, H)
+});
 
 fn commit(s: &Scalar, t: &Scalar) -> RistrettoPoint {
-    // FIXME: pre-compute
-let G = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator G");
-let H = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator H");
+    let (G, H) = *generators;
     G * s + H * t
 }
 
@@ -31,7 +35,7 @@ fn decode(s: &Scalar) -> FileKey {
 fn poly_eval(coeffs: &[Scalar], x: Scalar) -> Scalar {
     let mut r = Scalar::ZERO;
     let mut acc = Scalar::ONE;
-    for (j, c) in coeffs.iter().enumerate() {
+    for c in coeffs {
         r += c * acc;
         acc *= x;
     }
@@ -66,7 +70,7 @@ pub fn verify_share(share: SecretShare, coeff_commitments: &Vec<RistrettoPoint>)
     let lhs = commit(&share.s, &share.t);
     let mut rhs = coeff_commitments[0];
     let mut acc = Scalar::ONE;
-    for (j, c) in coeff_commitments[1..].iter().enumerate() {
+    for c in &coeff_commitments[1..] {
         acc *= Scalar::from(share.index);
         rhs += c * acc;
     }
