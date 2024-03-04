@@ -95,12 +95,23 @@ impl Cli {
         }
 
         let file_key = new_file_key();
-        let shares = crypto::share_secret(&file_key, threshold, n).0;
+        let (shares, commitments) = crypto::share_secret(&file_key, threshold, n);
         let mut shares_stanzas = vec![];
         for (r, s) in recipients.iter().zip(shares.iter()) {
             let recipient = r.to_recipient(UiCallbacks {}).map_err(io::Error::other)?;
+            let share_key = new_file_key();
+            let mut buf = vec![0; 64];
+            buf[..32].copy_from_slice(&s.s.to_bytes());
+            buf[32..].copy_from_slice(&s.t.to_bytes());
+            let aead = chacha20poly1305::ChaCha20Poly1305::new(&hkdf(&[], b"", &share_key.expose_secret()[..]).into());
+            aead.encrypt_in_place((&[0; 12]).into(), b"", &mut buf).map_err(|err| io::Error::other(err))?;
+            shares_stanzas.push(age_core::format::Stanza {
+                tag: "share".to_string(),
+                args: vec![s.index.to_string()],
+                body: buf,
+            });
             let mut r = recipient
-                .wrap_file_key(todo!())
+                .wrap_file_key(&share_key)
                 .map_err(io::Error::other)?;
             match r.len() {
                 0 => return Err(io::Error::other("plugin produced no stanzas")),
@@ -113,7 +124,7 @@ impl Cli {
 
         let out = std::io::stdout();
         let (mut out, _) =
-            cookie_factory::gen(format::write::header(threshold as usize, &shares_stanzas), out)
+            cookie_factory::gen(format::write::header(threshold as usize, &shares_stanzas, &commitments), out)
                 .map_err(io::Error::other)?;
 
         // TODO: handle multiple chunks

@@ -55,7 +55,7 @@ pub fn share_secret(fk: &FileKey, k: u32, n: u32) -> (Vec<SecretShare>, Vec<Rist
     let t_coeffs: Vec<_> = (0..k).map(|_| Scalar::random(&mut OsRng)).collect();
 
     let mut shares = vec![];
-    for index in 0..n {
+    for index in 1..=n {
         let s = poly_eval(&s_coeffs, Scalar::from(index));
         let t = poly_eval(&t_coeffs, Scalar::from(index));
         let share = SecretShare { index, s, t };
@@ -78,7 +78,29 @@ pub fn verify_share(share: SecretShare, coeff_commitments: &Vec<RistrettoPoint>)
 }
 
 pub fn reconstruct_secret(shares: &[SecretShare]) -> FileKey {
-    todo!();
+    // Lagrange interpolation
+    // L(x) = Σ yᵢ * lᵢ(x)
+    // lᵢ(x) = Π (x - xⱼ) / (xᵢ - xⱼ)
+    // s_0 = L(0) = Σ yᵢ * lᵢ(0)
+    // lᵢ(0) = Π -xⱼ / (xᵢ - xⱼ)
+    // lᵢ(0) = Π xⱼ / (xⱼ - xᵢ)
+
+    let mut s = Scalar::ZERO;
+    for (i, share) in shares.iter().enumerate() {
+        let mut l_0 = Scalar::ONE;
+        let x_i = Scalar::from(share.index);
+        for (j, other) in shares.iter().enumerate() {
+            if i != j {
+                let x_j = Scalar::from(other.index);
+                if x_j == x_i {
+                    panic!("duplicate share");
+                }
+                l_0 *= x_j * (x_j - x_i).invert();
+            }
+        }
+        s += share.s * l_0;
+    }
+    decode(&s)
 }
 
 #[cfg(test)]
