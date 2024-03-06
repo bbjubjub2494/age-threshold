@@ -4,6 +4,7 @@ use chacha20poly1305::AeadInPlace;
 use chacha20poly1305::KeyInit;
 use nom_bufreader::bufreader::BufReader;
 use nom_bufreader::Parse;
+use curve25519_dalek::Scalar;
 
 use age::cli_common::UiCallbacks;
 use age_core::primitives::hkdf;
@@ -67,6 +68,23 @@ pub struct Cli {
     input: Option<String>,
 }
 
+            fn decrypt_fk(identities: &[GenericIdentity], es: &format::EncShare) -> io::Result<Option<FileKey>> {
+                for identity in identities {
+                    for s in &es.stanzas {
+                    match identity
+                        .to_identity(UiCallbacks {})
+                        .map_err(io::Error::other)?
+                        .unwrap_stanza(s)
+                    {
+                        Some(Ok(file_key)) => return Ok(Some(file_key)),
+                        Some(Err(err)) => return Err(io::Error::other(err)),
+                        None => continue,
+                    }
+                }
+                }
+                Ok(None)
+            }
+
 impl Cli {
     pub fn main(&self) -> io::Result<()> {
         if self.encrypt && self.decrypt {
@@ -96,7 +114,7 @@ impl Cli {
 
         let file_key = new_file_key();
         let (shares, commitments) = crypto::share_secret(&file_key, threshold, n);
-        let mut shares_stanzas = vec![];
+        let mut enc_shares = vec![];
         for (r, s) in recipients.iter().zip(shares.iter()) {
             let recipient = r.to_recipient(UiCallbacks {}).map_err(io::Error::other)?;
             let share_key = new_file_key();
@@ -105,26 +123,19 @@ impl Cli {
             buf[32..].copy_from_slice(&s.t.to_bytes());
             let aead = chacha20poly1305::ChaCha20Poly1305::new(&hkdf(&[], b"", &share_key.expose_secret()[..]).into());
             aead.encrypt_in_place((&[0; 12]).into(), b"", &mut buf).map_err(|err| io::Error::other(err))?;
-            shares_stanzas.push(age_core::format::Stanza {
-                tag: "share".to_string(),
-                args: vec![s.index.to_string()],
-                body: buf,
-            });
-            let mut r = recipient
+            let shares = recipient
                 .wrap_file_key(&share_key)
                 .map_err(io::Error::other)?;
-            match r.len() {
-                0 => return Err(io::Error::other("plugin produced no stanzas")),
-                1 => (),
-                _ => return Err(io::Error::other("plugin produced multiple stanzas")),
-            }
-            let stanza = r.remove(0);
-            shares_stanzas.push(stanza);
+            enc_shares.push(format::EncShare {
+                index: s.index,
+                ciphertext: buf.into(),
+                stanzas: shares,
+            });
         }
 
         let out = std::io::stdout();
         let (mut out, _) =
-            cookie_factory::gen(format::write::header(threshold as usize, &shares_stanzas, &commitments), out)
+            cookie_factory::gen(format::write::header(threshold as usize, &commitments, &enc_shares), out)
                 .map_err(io::Error::other)?;
 
         // TODO: handle multiple chunks
@@ -168,29 +179,23 @@ impl Cli {
         })?;
 
         let mut shares = vec![];
-        for (i, s) in header.shares_stanzas.iter().enumerate() {
+        for es in header.enc_shares {
             if shares.len() >= header.threshold {
                 break;
             }
-            for identity in &identities {
-                match identity
-                    .to_identity(UiCallbacks {})
-                    .map_err(io::Error::other)?
-                    .unwrap_stanza(&s)
-                {
-                    Some(Ok(file_key)) => {
+
+            if let Some(file_key) = decrypt_fk(&identities, &es)? {
+                let aead = chacha20poly1305::ChaCha20Poly1305::new(&hkdf(&[], b"", &file_key.expose_secret()[..]).into());
+                let mut buf = es.ciphertext;
+                aead.decrypt_in_place((&[0; 12]).into(), b"", &mut buf)
+                    .map_err(|err| io::Error::other(err))?;
                         let share = crypto::SecretShare {
-                            s: todo!(),
-                            t: todo!(),
-                            index: (i + 1).try_into().unwrap(),
+                            s: Scalar::from_bytes_mod_order(buf[..32].try_into().unwrap()),
+                            t: Scalar::from_bytes_mod_order(buf[32..].try_into().unwrap()),
+                            index: es.index,
                         };
                         shares.push(share);
-                        break;
                     }
-                    Some(Err(err)) => return Err(io::Error::other(err)),
-                    None => continue,
-                }
-            }
         }
         if shares.len() < header.threshold {
             return Err(io::Error::other("not enough shares"));

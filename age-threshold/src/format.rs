@@ -6,8 +6,15 @@ const VERSION_LINE: &[u8] = b"bbjubjub.fr/age-threshold/v0\n";
 #[derive(Debug)]
 pub struct Header {
     pub threshold: usize,
-    pub shares_stanzas: Vec<Stanza>,
     pub commitments: Vec<RistrettoPoint>,
+    pub enc_shares: Vec<EncShare>,
+}
+
+#[derive(Debug)]
+pub struct EncShare {
+    pub index: u32,
+    pub ciphertext: Vec<u8>,
+    pub stanzas: Vec<Stanza>,
 }
 
 pub mod read {
@@ -22,7 +29,7 @@ pub mod read {
 
     use curve25519_dalek::ristretto::CompressedRistretto;
 
-    use super::{Header, VERSION_LINE};
+    use super::{EncShare, Header, VERSION_LINE};
 
     fn version_line(input: &[u8]) -> IResult<&[u8], ()> {
         let (input, _) = tag(VERSION_LINE)(input)?;
@@ -52,12 +59,31 @@ pub mod read {
             commitments.push(c);
         }
         let (input, (mut stanzas, _)) = many_till(age_stanza, hmac_line)(input)?;
+        let mut current_share = None;
+        let mut enc_shares = vec![];
+        for s in stanzas.drain(..) {
+            if s.tag == "share" {
+                if let Some(share) = current_share {
+                    enc_shares.push(share);
+                }
+                current_share = Some(EncShare {
+                    index: s.args[0].parse().map_err(|_| nom::Err::Error(Error::new(input, ErrorKind::Satisfy)))?,
+                    ciphertext: s.body().into(),
+                    stanzas: vec![],
+                });
+            } else {
+                let mut v = current_share.ok_or(nom::Err::Error(Error::new(input, ErrorKind::Satisfy)))?;
+                v.stanzas.push(s.into());
+                current_share = Some(v);
+            }
+        }
+        enc_shares.push(current_share.ok_or(nom::Err::Error(Error::new(input, ErrorKind::Satisfy)))?);
         Ok((
             input,
             Header {
                 threshold,
                 commitments,
-                shares_stanzas: stanzas.drain(..).map(|s| s.into()).collect(),
+                enc_shares,
             },
         ))
     }
@@ -73,7 +99,7 @@ pub mod write {
 
     use std::io::Write;
 
-    use super::{Stanza, VERSION_LINE, RistrettoPoint};
+    use super::{EncShare, Stanza, VERSION_LINE, RistrettoPoint};
 
     fn version_line<W: Write>(wc: WriteContext<W>) -> GenResult<W> {
         slice(VERSION_LINE)(wc)
@@ -86,16 +112,19 @@ pub mod write {
 
     pub fn header<'a, W: Write>(
         t: usize,
-        shares_stanzas: &'a Vec<Stanza>,
         commitments: &'a Vec<RistrettoPoint>,
+        enc_shares: &'a Vec<EncShare>,
     ) -> impl Fn(WriteContext<W>) -> GenResult<W> + 'a {
         move |mut wc| {
             wc = version_line(wc)?;
             wc = age_stanza("threshold", &[&t.to_string()], &[])(wc)?;
             let args: Vec<_> = commitments.iter().map(|c| STANDARD.encode(c.compress().as_bytes())).collect();
             wc = age_stanza("commitments", &args[..], &[])(wc)?;
-            for s in shares_stanzas {
+            for es in enc_shares {
+                wc = age_stanza("share", &[es.index.to_string()], &es.ciphertext)(wc)?;
+                for s in &es.stanzas {
                 wc = age_stanza(&s.tag, &s.args, &s.body)(wc)?;
+                }
             }
             wc = hmac_line(wc)?;
             Ok(wc)
