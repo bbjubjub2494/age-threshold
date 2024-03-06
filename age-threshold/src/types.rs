@@ -2,6 +2,7 @@ mod identity;
 mod recipient;
 
 use age_core::format::Stanza;
+
 use curve25519_dalek::ristretto::RistrettoPoint;
 
 pub use identity::AgeIdentity;

@@ -1,4 +1,3 @@
-
 use nom::bytes::streaming::tag;
 use nom::error::{Error, ErrorKind};
 use nom::multi::many_till;

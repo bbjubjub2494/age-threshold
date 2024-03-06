@@ -1,4 +1,3 @@
-
 use cookie_factory::combinator::slice;
 use cookie_factory::{GenResult, WriteContext};
 
