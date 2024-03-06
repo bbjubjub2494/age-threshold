@@ -66,7 +66,7 @@ pub fn share_secret(fk: &FileKey, k: u32, n: u32) -> (Vec<SecretShare>, Vec<Rist
     (shares, coeff_commitments)
 }
 
-pub fn verify_share(share: SecretShare, coeff_commitments: &Vec<RistrettoPoint>) -> bool {
+pub fn verify_share(share: &SecretShare, coeff_commitments: &Vec<RistrettoPoint>) -> bool {
     let lhs = commit(&share.s, &share.t);
     let mut rhs = coeff_commitments[0];
     let mut acc = Scalar::ONE;

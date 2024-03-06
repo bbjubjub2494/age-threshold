@@ -194,6 +194,9 @@ impl Cli {
                             t: Scalar::from_bytes_mod_order(buf[32..].try_into().unwrap()),
                             index: es.index,
                         };
+                        if !crypto::verify_share(&share, &header.commitments) {
+                            return Err(io::Error::other("invalid share"));
+                        }
                         shares.push(share);
                     }
         }
