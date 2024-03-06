@@ -18,8 +18,7 @@ use std::string::String;
 use crate::crypto;
 use crate::format;
 
-use crate::types::GenericIdentity;
-use crate::types::GenericRecipient;
+use crate::types::{AgeIdentity, AgeRecipient, EncShare, Header};
 
 const PAYLOAD_KEY_LABEL: &[u8] = b"payload";
 const NONCE_SIZE: usize = 16;
@@ -68,10 +67,7 @@ pub struct Cli {
     input: Option<String>,
 }
 
-fn decrypt_fk(
-    identities: &[GenericIdentity],
-    es: &format::EncShare,
-) -> io::Result<Option<FileKey>> {
+fn decrypt_fk(identities: &[AgeIdentity], es: &EncShare) -> io::Result<Option<FileKey>> {
     for identity in identities {
         for s in &es.stanzas {
             match identity
@@ -106,7 +102,7 @@ impl Cli {
     fn do_encrypt(&self) -> io::Result<()> {
         let mut recipients = vec![];
         for r in &self.recipient {
-            recipients.push(GenericRecipient::from_bech32(r.as_str()).map_err(io::Error::other)?);
+            recipients.push(AgeRecipient::from_bech32(r.as_str()).map_err(io::Error::other)?);
         }
         let n = recipients.len() as u32;
         let threshold = self.threshold.unwrap_or(n / 2 + 1);
@@ -132,7 +128,7 @@ impl Cli {
             let shares = recipient
                 .wrap_file_key(&share_key)
                 .map_err(io::Error::other)?;
-            enc_shares.push(format::EncShare {
+            enc_shares.push(EncShare {
                 index: s.index,
                 ciphertext: buf.into(),
                 stanzas: shares,
@@ -166,11 +162,11 @@ impl Cli {
         let mut identities = vec![];
         for id in &self.identity {
             let lines = read_text_file(&id)?;
-            identities.push(GenericIdentity::from_bech32(&lines[0]).map_err(io::Error::other)?);
+            identities.push(AgeIdentity::from_bech32(&lines[0]).map_err(io::Error::other)?);
         }
 
         let mut stdin = BufReader::new(io::stdin());
-        fn header(input: &[u8]) -> nom::IResult<&[u8], format::Header, nom::error::Error<Vec<u8>>> {
+        fn header(input: &[u8]) -> nom::IResult<&[u8], Header, nom::error::Error<Vec<u8>>> {
             format::read::header(input).map_err(|err| err.to_owned())
         }
         let header = stdin.parse(header).map_err(|err| match err {

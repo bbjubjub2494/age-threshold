@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 /// Represents any Age identity, whether native or plugin.
 #[derive(Clone, Debug, PartialEq)]
-pub struct GenericIdentity {
+pub struct AgeIdentity {
     pub plugin: Option<String>,
     pub data: Vec<u8>,
 }
@@ -11,7 +11,7 @@ pub struct GenericIdentity {
 const NATIVE_IDENTITY_HRP: &str = "age-secret-key-";
 const PLUGIN_IDENTITY_HRP_PREFIX: &str = "age-plugin-";
 
-impl GenericIdentity {
+impl AgeIdentity {
     pub fn to_bech32(self: &Self) -> String {
         let hrp = match self.plugin {
             None => NATIVE_IDENTITY_HRP.to_string(),
@@ -31,7 +31,7 @@ impl GenericIdentity {
             Err("invalid HRP")?
         };
         let data = Vec::<u8>::from_base32(b32data.as_slice()).or(Err("invalid base32"))?;
-        Ok(GenericIdentity { plugin, data })
+        Ok(AgeIdentity { plugin, data })
     }
 
     pub fn to_identity<C: age::Callbacks>(
@@ -42,7 +42,6 @@ impl GenericIdentity {
             None => Ok(Box::new(
                 age::x25519::Identity::from_str(&self.to_bech32()).unwrap(),
             )),
-            // TODO: ssh
             Some(ref plugin_name) => match age::plugin::IdentityPluginV1::new(
                 plugin_name,
                 &[age::plugin::Identity::from_str(&self.to_bech32()).unwrap()],
