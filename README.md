@@ -9,6 +9,12 @@ in order to decrypt.
 
 [Age]: https://age-encryption.org
 
+## Installation
+### Nix
+`nix profile install github:bbjubjub2494/age-threshold`
+### Cargo
+`cargo install --git https://github.com/bbjubjub2494/age-threshold`
+
 ## Alternatives
 
 [`age-plugin-sss`](https://github.com/olastor/age-plugin-sss)

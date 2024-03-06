@@ -42,6 +42,8 @@
           cargoHash = "sha256-xcjxzKfccWVIR7csNL9Myupr9qvSADe/HFnUa48Et3Q=";
         };
 
+        packages.default = packages.three;
+
         checks.e2e = pkgs.rustPlatform.buildRustPackage {
           name = "age-plugin-threshold-e2e_tests";
           src = ./e2e_tests;
