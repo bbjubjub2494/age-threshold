@@ -2,9 +2,9 @@ use age_core::format::FileKey;
 use age_core::secrecy::ExposeSecret;
 use chacha20poly1305::AeadInPlace;
 use chacha20poly1305::KeyInit;
+use curve25519_dalek::Scalar;
 use nom_bufreader::bufreader::BufReader;
 use nom_bufreader::Parse;
-use curve25519_dalek::Scalar;
 
 use age::cli_common::UiCallbacks;
 use age_core::primitives::hkdf;
@@ -68,22 +68,25 @@ pub struct Cli {
     input: Option<String>,
 }
 
-            fn decrypt_fk(identities: &[GenericIdentity], es: &format::EncShare) -> io::Result<Option<FileKey>> {
-                for identity in identities {
-                    for s in &es.stanzas {
-                    match identity
-                        .to_identity(UiCallbacks {})
-                        .map_err(io::Error::other)?
-                        .unwrap_stanza(s)
-                    {
-                        Some(Ok(file_key)) => return Ok(Some(file_key)),
-                        Some(Err(err)) => return Err(io::Error::other(err)),
-                        None => continue,
-                    }
-                }
-                }
-                Ok(None)
+fn decrypt_fk(
+    identities: &[GenericIdentity],
+    es: &format::EncShare,
+) -> io::Result<Option<FileKey>> {
+    for identity in identities {
+        for s in &es.stanzas {
+            match identity
+                .to_identity(UiCallbacks {})
+                .map_err(io::Error::other)?
+                .unwrap_stanza(s)
+            {
+                Some(Ok(file_key)) => return Ok(Some(file_key)),
+                Some(Err(err)) => return Err(io::Error::other(err)),
+                None => continue,
             }
+        }
+    }
+    Ok(None)
+}
 
 impl Cli {
     pub fn main(&self) -> io::Result<()> {
@@ -121,8 +124,11 @@ impl Cli {
             let mut buf = vec![0; 64];
             buf[..32].copy_from_slice(&s.s.to_bytes());
             buf[32..].copy_from_slice(&s.t.to_bytes());
-            let aead = chacha20poly1305::ChaCha20Poly1305::new(&hkdf(&[], b"", &share_key.expose_secret()[..]).into());
-            aead.encrypt_in_place((&[0; 12]).into(), b"", &mut buf).map_err(|err| io::Error::other(err))?;
+            let aead = chacha20poly1305::ChaCha20Poly1305::new(
+                &hkdf(&[], b"", &share_key.expose_secret()[..]).into(),
+            );
+            aead.encrypt_in_place((&[0; 12]).into(), b"", &mut buf)
+                .map_err(|err| io::Error::other(err))?;
             let shares = recipient
                 .wrap_file_key(&share_key)
                 .map_err(io::Error::other)?;
@@ -134,9 +140,11 @@ impl Cli {
         }
 
         let out = std::io::stdout();
-        let (mut out, _) =
-            cookie_factory::gen(format::write::header(threshold as usize, &commitments, &enc_shares), out)
-                .map_err(io::Error::other)?;
+        let (mut out, _) = cookie_factory::gen(
+            format::write::header(threshold as usize, &commitments, &enc_shares),
+            out,
+        )
+        .map_err(io::Error::other)?;
 
         // TODO: handle multiple chunks
         let mut buf = vec![0; CHUNK_SIZE];
@@ -185,20 +193,22 @@ impl Cli {
             }
 
             if let Some(file_key) = decrypt_fk(&identities, &es)? {
-                let aead = chacha20poly1305::ChaCha20Poly1305::new(&hkdf(&[], b"", &file_key.expose_secret()[..]).into());
+                let aead = chacha20poly1305::ChaCha20Poly1305::new(
+                    &hkdf(&[], b"", &file_key.expose_secret()[..]).into(),
+                );
                 let mut buf = es.ciphertext;
                 aead.decrypt_in_place((&[0; 12]).into(), b"", &mut buf)
                     .map_err(|err| io::Error::other(err))?;
-                        let share = crypto::SecretShare {
-                            s: Scalar::from_bytes_mod_order(buf[..32].try_into().unwrap()),
-                            t: Scalar::from_bytes_mod_order(buf[32..].try_into().unwrap()),
-                            index: es.index,
-                        };
-                        if !crypto::verify_share(&share, &header.commitments) {
-                            return Err(io::Error::other("invalid share"));
-                        }
-                        shares.push(share);
-                    }
+                let share = crypto::SecretShare {
+                    s: Scalar::from_bytes_mod_order(buf[..32].try_into().unwrap()),
+                    t: Scalar::from_bytes_mod_order(buf[32..].try_into().unwrap()),
+                    index: es.index,
+                };
+                if !crypto::verify_share(&share, &header.commitments) {
+                    return Err(io::Error::other("invalid share"));
+                }
+                shares.push(share);
+            }
         }
         if shares.len() < header.threshold {
             return Err(io::Error::other("not enough shares"));

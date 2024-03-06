@@ -1,20 +1,20 @@
 use age_core::format::{FileKey, FILE_KEY_BYTES};
-use age_core::secrecy::{ExposeSecret, Secret, Zeroize};
-use curve25519_dalek::scalar::Scalar;
+use age_core::secrecy::{ExposeSecret, Zeroize};
 use curve25519_dalek::ristretto::RistrettoPoint;
+use curve25519_dalek::scalar::Scalar;
+use once_cell::sync::Lazy;
 use rand::rngs::OsRng;
 use sha2::Sha512;
-use once_cell::sync::Lazy;
 
-static generators: Lazy<(RistrettoPoint,RistrettoPoint)> = Lazy::new(|| {
-    let G = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator G");
-    let H = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator H");
-    (G, H)
+static GENERATORS: Lazy<(RistrettoPoint, RistrettoPoint)> = Lazy::new(|| {
+    let g = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator G");
+    let h = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator H");
+    (g, h)
 });
 
 fn commit(s: &Scalar, t: &Scalar) -> RistrettoPoint {
-    let (G, H) = *generators;
-    G * s + H * t
+    let (g, h) = *GENERATORS;
+    g * s + h * t
 }
 
 fn encode(fk: &FileKey) -> Scalar {
@@ -51,7 +51,15 @@ pub struct SecretShare {
 
 pub fn share_secret(fk: &FileKey, k: u32, n: u32) -> (Vec<SecretShare>, Vec<RistrettoPoint>) {
     let s0 = encode(fk);
-    let s_coeffs: Vec<_> = (0..k).map(|i| if i == 0 { s0 } else { Scalar::random(&mut OsRng) }).collect();
+    let s_coeffs: Vec<_> = (0..k)
+        .map(|i| {
+            if i == 0 {
+                s0
+            } else {
+                Scalar::random(&mut OsRng)
+            }
+        })
+        .collect();
     let t_coeffs: Vec<_> = (0..k).map(|_| Scalar::random(&mut OsRng)).collect();
 
     let mut shares = vec![];
@@ -62,7 +70,11 @@ pub fn share_secret(fk: &FileKey, k: u32, n: u32) -> (Vec<SecretShare>, Vec<Rist
         shares.push(share);
     }
 
-    let coeff_commitments = s_coeffs.iter().zip(t_coeffs.iter()).map(|(s, t)| commit(s, t)).collect();
+    let coeff_commitments = s_coeffs
+        .iter()
+        .zip(t_coeffs.iter())
+        .map(|(s, t)| commit(s, t))
+        .collect();
     (shares, coeff_commitments)
 }
 
@@ -105,7 +117,7 @@ pub fn reconstruct_secret(shares: &[SecretShare]) -> FileKey {
 
 #[cfg(test)]
 mod tests {
-    use super::{share_secret, reconstruct_secret, verify_share, SecretShare};
+    use super::{reconstruct_secret, share_secret, verify_share, SecretShare};
     use age_core::format::{FileKey, FILE_KEY_BYTES};
     use age_core::secrecy::ExposeSecret;
 
@@ -114,7 +126,7 @@ mod tests {
         let actual = [0x9; FILE_KEY_BYTES];
         let t = 3;
         let n = 5;
-        let (shares,_) = share_secret(&FileKey::from(actual), t, n);
+        let (shares, _) = share_secret(&FileKey::from(actual), t, n);
 
         let result = reconstruct_secret(&shares[..]);
         let expected = result.expose_secret();
