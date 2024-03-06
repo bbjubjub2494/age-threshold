@@ -1,8 +1,8 @@
 use age_core::format::FileKey;
 use age_core::secrecy::ExposeSecret;
-use chacha20poly1305::AeadInPlace;
-use chacha20poly1305::KeyInit;
+use chacha20poly1305::{AeadInPlace, ChaCha20Poly1305, KeyInit};
 use curve25519_dalek::Scalar;
+
 use nom_bufreader::bufreader::BufReader;
 use nom_bufreader::Parse;
 
@@ -23,9 +23,9 @@ use crate::types::{AgeIdentity, AgeRecipient, EncShare, Header};
 const PAYLOAD_KEY_LABEL: &[u8] = b"payload";
 const NONCE_SIZE: usize = 16;
 const CHUNK_SIZE: usize = 64 * 1024;
+const TAG_SIZE: usize = 16;
 
 fn read_text_file(path: &str) -> io::Result<Vec<String>> {
-    use std::io::BufReader;
     let file = File::open(path)?;
     let mut v = vec![];
     for l in BufReader::new(file).lines() {
@@ -71,7 +71,7 @@ fn decrypt_fk(identities: &[AgeIdentity], es: &EncShare) -> io::Result<Option<Fi
     for identity in identities {
         for s in &es.stanzas {
             match identity
-                .to_identity(UiCallbacks {})
+                .to_identity(UiCallbacks)
                 .map_err(io::Error::other)?
                 .unwrap_stanza(s)
             {
@@ -82,6 +82,33 @@ fn decrypt_fk(identities: &[AgeIdentity], es: &EncShare) -> io::Result<Option<Fi
         }
     }
     Ok(None)
+}
+
+fn for_chunks(
+    mut input: BufReader<impl std::io::Read>,
+    chunk_size: usize,
+    mut f: impl FnMut(u128, bool, &mut Vec<u8>) -> io::Result<()>,
+) -> io::Result<()> {
+    let mut buf = vec![0; chunk_size];
+    let mut counter = 0u128;
+    loop {
+        let mut n = 0;
+        while n < buf.len() {
+            match input.read(&mut buf[n..]) {
+                Ok(0) => break,
+                Ok(m) => n += m,
+                Err(err) => return Err(err),
+            }
+        }
+        if n < buf.len() || input.fill_buf()?.is_empty() {
+            buf.truncate(n);
+            f(counter, true, &mut buf)?;
+            break;
+        }
+        f(counter, false, &mut buf)?;
+        counter += 1;
+    }
+    Ok(())
 }
 
 impl Cli {
@@ -115,14 +142,13 @@ impl Cli {
         let (shares, commitments) = crypto::share_secret(&file_key, threshold, n);
         let mut enc_shares = vec![];
         for (r, s) in recipients.iter().zip(shares.iter()) {
-            let recipient = r.to_recipient(UiCallbacks {}).map_err(io::Error::other)?;
+            let recipient = r.to_recipient(UiCallbacks).map_err(io::Error::other)?;
             let share_key = new_file_key();
             let mut buf = vec![0; 64];
             buf[..32].copy_from_slice(&s.s.to_bytes());
             buf[32..].copy_from_slice(&s.t.to_bytes());
-            let aead = chacha20poly1305::ChaCha20Poly1305::new(
-                &hkdf(&[], b"", &share_key.expose_secret()[..]).into(),
-            );
+            let aead =
+                ChaCha20Poly1305::new(&hkdf(&[], b"", &share_key.expose_secret()[..]).into());
             aead.encrypt_in_place((&[0; 12]).into(), b"", &mut buf)
                 .map_err(|err| io::Error::other(err))?;
             let shares = recipient
@@ -142,20 +168,21 @@ impl Cli {
         )
         .map_err(io::Error::other)?;
 
-        // TODO: handle multiple chunks
-        let mut buf = vec![0; CHUNK_SIZE];
-        let n = std::io::stdin().read(&mut buf[..])?;
-        buf.truncate(n);
         let mut nonce = [0; NONCE_SIZE];
         OsRng.fill_bytes(&mut nonce);
-        let payload_key = hkdf(nonce.as_ref(), PAYLOAD_KEY_LABEL, file_key.expose_secret()).into();
-        let aead = chacha20poly1305::ChaCha20Poly1305::new(&payload_key);
-        aead.encrypt_in_place((&[0; 12]).into(), b"", &mut buf)
-            .map_err(|err| io::Error::other(err))?;
+        let payload_key = &hkdf(nonce.as_ref(), PAYLOAD_KEY_LABEL, file_key.expose_secret());
         out.write_all(&nonce)?;
-        out.write_all(&buf)?;
 
-        Ok(())
+        let aead = ChaCha20Poly1305::new(payload_key.into());
+        let input = BufReader::new(io::stdin());
+        for_chunks(input, CHUNK_SIZE, |counter, last_chunk, buf| {
+            let mut iv = [0; 12];
+            iv[..11].copy_from_slice(&counter.to_le_bytes()[..11]);
+            iv[11] = last_chunk as u8;
+            aead.encrypt_in_place((&iv).into(), b"", buf)
+                .map_err(|err| io::Error::other(err))?;
+            out.write_all(&buf)
+        })
     }
 
     fn do_decrypt(&self) -> io::Result<()> {
@@ -165,11 +192,11 @@ impl Cli {
             identities.push(AgeIdentity::from_bech32(&lines[0]).map_err(io::Error::other)?);
         }
 
-        let mut stdin = BufReader::new(io::stdin());
+        let mut input = BufReader::new(io::stdin());
         fn header(input: &[u8]) -> nom::IResult<&[u8], Header, nom::error::Error<Vec<u8>>> {
             format::read::header(input).map_err(|err| err.to_owned())
         }
-        let header = stdin.parse(header).map_err(|err| match err {
+        let header = input.parse(header).map_err(|err| match err {
             nom_bufreader::Error::Error(_) => {
                 io::Error::new(io::ErrorKind::InvalidData, "parse error")
             }
@@ -189,9 +216,8 @@ impl Cli {
             }
 
             if let Some(file_key) = decrypt_fk(&identities, &es)? {
-                let aead = chacha20poly1305::ChaCha20Poly1305::new(
-                    &hkdf(&[], b"", &file_key.expose_secret()[..]).into(),
-                );
+                let aead =
+                    ChaCha20Poly1305::new(&hkdf(&[], b"", &file_key.expose_secret()[..]).into());
                 let mut buf = es.ciphertext;
                 aead.decrypt_in_place((&[0; 12]).into(), b"", &mut buf)
                     .map_err(|err| io::Error::other(err))?;
@@ -212,16 +238,18 @@ impl Cli {
         let file_key = crypto::reconstruct_secret(&shares);
 
         let mut nonce = [0; NONCE_SIZE];
-        stdin.read_exact(&mut nonce)?;
-        let payload_key = hkdf(nonce.as_ref(), PAYLOAD_KEY_LABEL, file_key.expose_secret()).into();
-        let aead = chacha20poly1305::ChaCha20Poly1305::new(&payload_key);
-        let mut buf = vec![0; CHUNK_SIZE];
-        let n = stdin.read(&mut buf[..])?;
-        buf.truncate(n);
-        aead.decrypt_in_place((&[0; 12]).into(), b"", &mut buf)
-            .map_err(|err| io::Error::other(err))?;
-        io::stdout().write_all(&buf)?;
+        input.read_exact(&mut nonce)?;
+        let payload_key = &hkdf(nonce.as_ref(), PAYLOAD_KEY_LABEL, file_key.expose_secret());
+        let aead = ChaCha20Poly1305::new(payload_key.into());
 
-        Ok(())
+        let mut out = std::io::stdout();
+        for_chunks(input, CHUNK_SIZE + TAG_SIZE, |counter, last_chunk, buf| {
+            let mut iv = [0; 12];
+            iv[..11].copy_from_slice(&counter.to_le_bytes()[..11]);
+            iv[11] = last_chunk as u8;
+            aead.decrypt_in_place((&iv).into(), b"", buf)
+                .map_err(|err| io::Error::other(err))?;
+            out.write_all(&buf)
+        })
     }
 }
