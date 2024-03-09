@@ -6,6 +6,8 @@ use once_cell::sync::Lazy;
 use rand::rngs::OsRng;
 use sha2::Sha512;
 
+use crate::types::SecretShare;
+
 static GENERATORS: Lazy<(RistrettoPoint, RistrettoPoint)> = Lazy::new(|| {
     let g = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator G");
     let h = RistrettoPoint::hash_from_bytes::<Sha512>(b"age-threshold pedersen generator H");
@@ -40,13 +42,6 @@ fn poly_eval(coeffs: &[Scalar], x: Scalar) -> Scalar {
         acc *= x;
     }
     r
-}
-
-#[derive(Debug)]
-pub struct SecretShare {
-    pub index: u32,
-    pub s: Scalar,
-    pub t: Scalar,
 }
 
 pub fn share_secret(fk: &FileKey, k: u32, n: u32) -> (Vec<SecretShare>, Vec<RistrettoPoint>) {
@@ -140,8 +135,8 @@ mod tests {
         let n = 5;
         let (shares, commitments) = share_secret(&FileKey::from(actual), t, n);
 
-        for share in shares {
-            assert!(verify_share(&share, &commitments));
+        for share in &shares {
+            assert!(verify_share(share, &commitments));
         }
     }
 }

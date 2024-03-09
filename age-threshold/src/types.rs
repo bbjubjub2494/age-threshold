@@ -1,5 +1,6 @@
 mod identity;
 mod recipient;
+mod secret_share;
 
 use age_core::format::Stanza;
 
@@ -7,6 +8,7 @@ use curve25519_dalek::ristretto::RistrettoPoint;
 
 pub use identity::AgeIdentity;
 pub use recipient::AgeRecipient;
+pub use secret_share::SecretShare;
 
 #[derive(Debug)]
 pub struct Header {

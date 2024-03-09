@@ -18,7 +18,7 @@ use std::string::String;
 use crate::crypto;
 use crate::format;
 
-use crate::types::{AgeIdentity, AgeRecipient, EncShare, Header};
+use crate::types::{AgeIdentity, AgeRecipient, EncShare, Header, SecretShare};
 
 const PAYLOAD_KEY_LABEL: &[u8] = b"payload";
 const NONCE_SIZE: usize = 16;
@@ -221,7 +221,7 @@ impl Cli {
                 let mut buf = es.ciphertext;
                 aead.decrypt_in_place((&[0; 12]).into(), b"", &mut buf)
                     .map_err(|err| io::Error::other(err))?;
-                let share = crypto::SecretShare {
+                let share = SecretShare {
                     s: Scalar::from_bytes_mod_order(buf[..32].try_into().unwrap()),
                     t: Scalar::from_bytes_mod_order(buf[32..].try_into().unwrap()),
                     index: es.index,
