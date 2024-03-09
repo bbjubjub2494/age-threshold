@@ -24,10 +24,11 @@ impl AgeIdentity {
     }
     pub fn from_bech32(s: &str) -> Result<Self, &str> {
         let (hrp, data) = bech32::decode(s).or(Err("invalid bech32"))?;
-        let plugin = if hrp.as_str() == NATIVE_IDENTITY_HRP {
+        let hrp = hrp.as_str().to_lowercase();
+        let plugin = if hrp == NATIVE_IDENTITY_HRP {
             None
-        } else if hrp.as_str().starts_with(PLUGIN_IDENTITY_HRP_PREFIX) {
-            Some(hrp.as_str()[PLUGIN_IDENTITY_HRP_PREFIX.len()..].to_owned())
+        } else if hrp.starts_with(PLUGIN_IDENTITY_HRP_PREFIX) {
+            Some(hrp[PLUGIN_IDENTITY_HRP_PREFIX.len()..].to_owned())
         } else {
             Err("invalid HRP")?
         };
@@ -55,5 +56,22 @@ impl AgeIdentity {
                 _ => panic!("unexpected error"),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AgeIdentity;
+    use hex_literal::hex;
+
+    #[test]
+    fn test_example_no_plugin() {
+        let example = "AGE-SECRET-KEY-1QL3Z7HJY54PW3HYWW5AYYFG7ZQGVC7W3J2ELW8ZMRJ2KG5SFN9AQGHWZHJ";
+        let expected = AgeIdentity {
+            plugin: None,
+            data: hex!("07e22f5e44a542e8dc8e753a42251e1010cc79d192b3f71c5b1c95645209997a").to_vec(),
+        };
+        assert_eq!(expected.to_bech32(), example);
+        assert_eq!(AgeIdentity::from_bech32(example), Ok(expected));
     }
 }
