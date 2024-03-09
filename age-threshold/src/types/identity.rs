@@ -11,7 +11,7 @@ const NATIVE_IDENTITY_HRP: &str = "age-secret-key-";
 const PLUGIN_IDENTITY_HRP_PREFIX: &str = "age-plugin-";
 
 impl AgeIdentity {
-    pub fn to_bech32(self: &Self) -> String {
+    pub fn to_bech32(&self) -> String {
         let hrp = match self.plugin {
             None => bech32::Hrp::parse(NATIVE_IDENTITY_HRP).unwrap(),
             Some(ref plugin) => {
@@ -36,7 +36,7 @@ impl AgeIdentity {
     }
 
     pub fn to_identity<C: age::Callbacks>(
-        self: &Self,
+        &self,
         callbacks: C,
     ) -> Result<Box<dyn age::Identity>, String> {
         match self.plugin {

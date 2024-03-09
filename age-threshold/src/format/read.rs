@@ -61,7 +61,7 @@ pub fn header<'a>(input: &[u8]) -> IResult<&[u8], Header> {
                 index: s.args[0]
                     .parse()
                     .map_err(|_| nom::Err::Error(Error::new(input, ErrorKind::Satisfy)))?,
-                ciphertext: s.body().into(),
+                ciphertext: s.body(),
                 stanzas: vec![],
             });
         } else {

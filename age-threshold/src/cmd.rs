@@ -30,7 +30,7 @@ fn read_text_file(path: &str) -> io::Result<Vec<String>> {
     let mut v = vec![];
     for l in BufReader::new(file).lines() {
         let line = l?;
-        if !line.starts_with("#") {
+        if !line.starts_with('#') {
             v.push(line.trim().to_string());
         }
     }
@@ -150,13 +150,13 @@ impl Cli {
             let aead =
                 ChaCha20Poly1305::new(&hkdf(&[], b"", &share_key.expose_secret()[..]).into());
             aead.encrypt_in_place((&[0; 12]).into(), b"", &mut buf)
-                .map_err(|err| io::Error::other(err))?;
+                .map_err(io::Error::other)?;
             let shares = recipient
                 .wrap_file_key(&share_key)
                 .map_err(io::Error::other)?;
             enc_shares.push(EncShare {
                 index: s.index,
-                ciphertext: buf.into(),
+                ciphertext: buf,
                 stanzas: shares,
             });
         }
@@ -180,15 +180,15 @@ impl Cli {
             iv[..11].copy_from_slice(&counter.to_le_bytes()[..11]);
             iv[11] = last_chunk as u8;
             aead.encrypt_in_place((&iv).into(), b"", buf)
-                .map_err(|err| io::Error::other(err))?;
-            out.write_all(&buf)
+                .map_err(io::Error::other)?;
+            out.write_all(buf)
         })
     }
 
     fn do_decrypt(&self) -> io::Result<()> {
         let mut identities = vec![];
         for id in &self.identity {
-            let lines = read_text_file(&id)?;
+            let lines = read_text_file(id)?;
             identities.push(AgeIdentity::from_bech32(&lines[0]).map_err(io::Error::other)?);
         }
 
@@ -220,7 +220,7 @@ impl Cli {
                     ChaCha20Poly1305::new(&hkdf(&[], b"", &file_key.expose_secret()[..]).into());
                 let mut buf = es.ciphertext;
                 aead.decrypt_in_place((&[0; 12]).into(), b"", &mut buf)
-                    .map_err(|err| io::Error::other(err))?;
+                    .map_err(io::Error::other)?;
                 let share = SecretShare {
                     s: Scalar::from_bytes_mod_order(buf[..32].try_into().unwrap()),
                     t: Scalar::from_bytes_mod_order(buf[32..].try_into().unwrap()),
@@ -248,8 +248,8 @@ impl Cli {
             iv[..11].copy_from_slice(&counter.to_le_bytes()[..11]);
             iv[11] = last_chunk as u8;
             aead.decrypt_in_place((&iv).into(), b"", buf)
-                .map_err(|err| io::Error::other(err))?;
-            out.write_all(&buf)
+                .map_err(io::Error::other)?;
+            out.write_all(buf)
         })
     }
 }

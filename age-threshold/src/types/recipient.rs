@@ -12,7 +12,7 @@ const PLUGIN_RECIPIENT_HRP_PREFIX: &str = "age1";
 
 impl AgeRecipient {
     // needed for conversions
-    pub fn to_bech32(self: &Self) -> String {
+    pub fn to_bech32(&self) -> String {
         let hrp = match self.plugin {
             None => bech32::Hrp::parse(NATIVE_RECIPIENT_HRP).unwrap(),
             Some(ref plugin) => {
@@ -39,7 +39,7 @@ impl AgeRecipient {
     }
 
     pub fn to_recipient<C: age::Callbacks>(
-        self: &Self,
+        &self,
         callbacks: C,
     ) -> Result<Box<dyn age::Recipient>, String> {
         match self.plugin {

@@ -37,7 +37,7 @@ fn scenario() -> Result<(), Box<dyn std::error::Error>> {
             .stdin(Stdio::piped())
             .stdout(File::create("test.age")?);
         for r in recipients {
-            cmd.args(&["-r", &r]);
+            cmd.args(["-r", &r]);
         }
         let mut child = cmd.spawn()?;
         let mut stdin = child.stdin.take().expect("Failed to open stdin");
