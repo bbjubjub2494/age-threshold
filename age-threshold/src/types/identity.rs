@@ -27,8 +27,8 @@ impl AgeIdentity {
         let hrp = hrp.as_str().to_lowercase();
         let plugin = if hrp == NATIVE_IDENTITY_HRP {
             None
-        } else if hrp.starts_with(PLUGIN_IDENTITY_HRP_PREFIX) {
-            Some(hrp[PLUGIN_IDENTITY_HRP_PREFIX.len()..].to_owned())
+        } else if let Some(plugin) = hrp.strip_prefix(PLUGIN_IDENTITY_HRP_PREFIX) {
+            Some(plugin.to_owned())
         } else {
             Err("invalid HRP")?
         };

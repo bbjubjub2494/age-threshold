@@ -23,8 +23,8 @@ fn hmac_line<W: Write>(wc: WriteContext<W>) -> GenResult<W> {
 
 pub fn header<'a, W: Write>(
     t: usize,
-    commitments: &'a Vec<RistrettoPoint>,
-    enc_shares: &'a Vec<EncShare>,
+    commitments: &'a [RistrettoPoint],
+    enc_shares: &'a [EncShare],
 ) -> impl Fn(WriteContext<W>) -> GenResult<W> + 'a {
     move |mut wc| {
         wc = version_line(wc)?;

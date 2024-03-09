@@ -23,7 +23,7 @@ fn hmac_line(input: &[u8]) -> IResult<&[u8], ()> {
     Ok((input, ()))
 }
 
-pub fn header<'a>(input: &[u8]) -> IResult<&[u8], Header> {
+pub fn header(input: &[u8]) -> IResult<&[u8], Header> {
     let (input, ()) = version_line(input)?;
     let (input, stanza) = age_stanza(input)?;
     if stanza.tag != "threshold" {
