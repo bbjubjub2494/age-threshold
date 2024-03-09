@@ -31,7 +31,7 @@
           name = "age-threshold";
           src = ./age-threshold;
 
-          cargoHash = "sha256-bH4aIcJFMWm5AnbKhaXVPRXMwgEAu/2geDuob1o4H0o=";
+          cargoHash = "sha256-vsMElmhvotaArZdh/9WBuxOA5pmw9Gp05u13ONLWhz4=";
         };
 
         packages.three = pkgs.rustPlatform.buildRustPackage {
@@ -39,7 +39,7 @@
           srcs = [./age-threshold ./three];
           sourceRoot = "three";
 
-          cargoHash = "sha256-xcjxzKfccWVIR7csNL9Myupr9qvSADe/HFnUa48Et3Q=";
+          cargoHash = "sha256-KDARnp/rg0uIP9MP6MRi5jqm/q6YWb9kKNbmge8PjQ0=";
         };
 
         packages.default = packages.three;
@@ -48,7 +48,7 @@
           name = "age-threshold-integration";
           src = ./integration;
 
-          cargoHash = "sha256-Lh15x4l/c7lDrHSLJ16XS6qFnml9WtbuPmVNt7YSHac=";
+          cargoHash = "sha256-0DjfmESVAiuP+lyS9Dh4QAZE5mHJ9AF0oxrzV/U3tAk=";
 
           nativeCheckInputs = [packages.three pkgs.age];
         };
