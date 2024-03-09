@@ -1,4 +1,3 @@
-use bech32::{FromBase32, ToBase32, Variant};
 use std::str::FromStr;
 
 /// Represents any Age recipient, whether native or plugin.
@@ -8,32 +7,35 @@ pub struct AgeRecipient {
     pub data: Vec<u8>,
 }
 
-const PLUGIN_RECIPIENT_PREFIX: &str = "age1";
+const NATIVE_RECIPIENT_HRP: &str = "age";
+const PLUGIN_RECIPIENT_HRP_PREFIX: &str = "age1";
 
 impl AgeRecipient {
     // needed for conversions
     pub fn to_bech32(self: &Self) -> String {
         let hrp = match self.plugin {
-            None => "age".to_string(),
-            Some(ref plugin) => "age1".to_string() + plugin,
+            None => bech32::Hrp::parse(NATIVE_RECIPIENT_HRP).unwrap(),
+            Some(ref plugin) => {
+                bech32::Hrp::parse(&(PLUGIN_RECIPIENT_HRP_PREFIX.to_owned() + plugin)).unwrap()
+            }
         };
-        bech32::encode(&hrp, self.data.to_base32(), Variant::Bech32).unwrap()
+        bech32::encode::<bech32::Bech32>(hrp, &self.data).unwrap()
     }
     pub fn from_bech32(s: &str) -> Result<Self, &str> {
-        let (hrp, data, _) = bech32::decode(s).or(Err("invalid bech32"))?;
-        let plugin = if hrp == "age" {
+        let (hrp, data) = bech32::decode(s).or(Err("invalid bech32"))?;
+        let plugin = if hrp.as_str() == NATIVE_RECIPIENT_HRP {
             None
-        } else if hrp.starts_with(PLUGIN_RECIPIENT_PREFIX) {
-            Some(hrp.split_at(PLUGIN_RECIPIENT_PREFIX.len()).1.to_owned())
+        } else if hrp.as_str().starts_with(PLUGIN_RECIPIENT_HRP_PREFIX) {
+            Some(
+                hrp.as_str()
+                    .split_at(PLUGIN_RECIPIENT_HRP_PREFIX.len())
+                    .1
+                    .to_owned(),
+            )
         } else {
             Err("invalid HRP")?
         };
-        Ok(AgeRecipient {
-            plugin: plugin,
-            data: Vec::<u8>::from_base32(data.as_slice())
-                .or(Err("base32 decoding"))?
-                .to_owned(),
-        })
+        Ok(AgeRecipient { plugin, data })
     }
 
     pub fn to_recipient<C: age::Callbacks>(

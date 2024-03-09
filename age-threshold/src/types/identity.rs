@@ -1,4 +1,3 @@
-use bech32::{self, FromBase32, ToBase32, Variant};
 use std::str::FromStr;
 
 /// Represents any Age identity, whether native or plugin.
@@ -14,23 +13,24 @@ const PLUGIN_IDENTITY_HRP_PREFIX: &str = "age-plugin-";
 impl AgeIdentity {
     pub fn to_bech32(self: &Self) -> String {
         let hrp = match self.plugin {
-            None => NATIVE_IDENTITY_HRP.to_string(),
-            Some(ref plugin) => PLUGIN_IDENTITY_HRP_PREFIX.to_string() + plugin,
+            None => bech32::Hrp::parse(NATIVE_IDENTITY_HRP).unwrap(),
+            Some(ref plugin) => {
+                bech32::Hrp::parse(&(PLUGIN_IDENTITY_HRP_PREFIX.to_owned() + plugin)).unwrap()
+            }
         };
-        bech32::encode(&hrp, &self.data.to_base32(), Variant::Bech32)
+        bech32::encode::<bech32::Bech32>(hrp, &self.data)
             .unwrap()
             .to_uppercase()
     }
     pub fn from_bech32(s: &str) -> Result<Self, &str> {
-        let (hrp, b32data, _) = bech32::decode(s).or(Err("invalid bech32"))?;
-        let plugin = if hrp == NATIVE_IDENTITY_HRP {
+        let (hrp, data) = bech32::decode(s).or(Err("invalid bech32"))?;
+        let plugin = if hrp.as_str() == NATIVE_IDENTITY_HRP {
             None
-        } else if hrp.starts_with(PLUGIN_IDENTITY_HRP_PREFIX) {
-            Some(hrp[PLUGIN_IDENTITY_HRP_PREFIX.len()..].to_string())
+        } else if hrp.as_str().starts_with(PLUGIN_IDENTITY_HRP_PREFIX) {
+            Some(hrp.as_str()[PLUGIN_IDENTITY_HRP_PREFIX.len()..].to_owned())
         } else {
             Err("invalid HRP")?
         };
-        let data = Vec::<u8>::from_base32(b32data.as_slice()).or(Err("invalid base32"))?;
         Ok(AgeIdentity { plugin, data })
     }
 
