@@ -44,9 +44,9 @@
 
         packages.default = packages.three;
 
-        checks.e2e = pkgs.rustPlatform.buildRustPackage {
-          name = "age-plugin-threshold-e2e_tests";
-          src = ./e2e_tests;
+        checks.integration = pkgs.rustPlatform.buildRustPackage {
+          name = "age-threshold-integration";
+          src = ./integration;
 
           cargoHash = "sha256-Lh15x4l/c7lDrHSLJ16XS6qFnml9WtbuPmVNt7YSHac=";
 
