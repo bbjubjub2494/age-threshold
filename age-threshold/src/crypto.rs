@@ -117,7 +117,7 @@ pub fn reconstruct_secret(shares: &[SecretShare]) -> FileKey {
 
 #[cfg(test)]
 mod tests {
-    use super::{reconstruct_secret, share_secret, verify_share, SecretShare};
+    use super::{reconstruct_secret, share_secret, verify_share};
     use age_core::format::{FileKey, FILE_KEY_BYTES};
     use age_core::secrecy::ExposeSecret;
 
@@ -141,7 +141,7 @@ mod tests {
         let (shares, commitments) = share_secret(&FileKey::from(actual), t, n);
 
         for share in shares {
-            assert!(verify_share(share, &commitments));
+            assert!(verify_share(&share, &commitments));
         }
     }
 }
