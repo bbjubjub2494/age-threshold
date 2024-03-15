@@ -4,17 +4,18 @@
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    hercules-ci-effects.url = "github:hercules-ci/hercules-ci-effects";
   };
 
   outputs = inputs @ {flake-parts, ...}:
     flake-parts.lib.mkFlake {inherit inputs;} {
       imports = [
-        # To import a flake module
-        # 1. Add foo to inputs
-        # 2. Add foo as a parameter to the outputs function
-        # 3. Add here: foo.flakeModule
+        inputs.hercules-ci-effects.flakeModule
       ];
       systems = ["x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin"];
+      # NOTE: I do not have runners for darwin
+      herculesCI.ciSystems = ["x86_64-linux" "aarch64-linux"];
+
       perSystem = {
         config,
         self',
