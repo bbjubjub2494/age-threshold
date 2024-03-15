@@ -44,30 +44,45 @@
 
         packages.default = packages.three;
 
-        checks.integration = pkgs.rustPlatform.buildRustPackage {
-          name = "age-threshold-integration";
-          src = ./integration;
+        checks =
+          {
+            integration = pkgs.rustPlatform.buildRustPackage {
+              name = "age-threshold-integration";
+              src = ./integration;
 
-          cargoHash = "sha256-0DjfmESVAiuP+lyS9Dh4QAZE5mHJ9AF0oxrzV/U3tAk=";
+              cargoHash = "sha256-0DjfmESVAiuP+lyS9Dh4QAZE5mHJ9AF0oxrzV/U3tAk=";
 
-          nativeCheckInputs = [packages.three pkgs.age];
-        };
+              nativeCheckInputs = [packages.three pkgs.age];
+            };
+          }
+          // pkgs.lib.mapAttrs'
+          (k: v:
+            pkgs.lib.nameValuePair "${k}-cargo-fmt" (v.overrideAttrs (prev: {
+              name = "${prev.name}-cargo-fmt";
 
-        checks.rust-format = pkgs.stdenv.mkDerivation {
-          name = "age-threshold-rust-format";
-          src = ./.;
+              nativeCheckInputs = (prev.nativeCheckInputs or []) ++ [pkgs.rustfmt];
 
-          nativeCheckInputs = [pkgs.cargo pkgs.rustfmt];
+              dontCargoBuild = true;
+              checkPhase = "cargo fmt --check";
+              installPhase = "touch $out";
+            }))) {
+            inherit (packages) age-threshold three;
+            inherit (checks) integration;
+          }
+          // pkgs.lib.mapAttrs'
+          (k: v:
+            pkgs.lib.nameValuePair "${k}-cargo-clippy" (v.overrideAttrs (prev: {
+              name = "${prev.name}-cargo-clippy";
 
-          doCheck = true;
-          checkPhase = ''
-            for p in age-threshold integration three; do
-              cargo -Z unstable-options -C $p fmt --check
-            done
-          '';
+              nativeCheckInputs = (prev.nativeCheckInputs or []) ++ [pkgs.clippy];
 
-          installPhase = "touch $out";
-        };
+              dontCargoBuild = true;
+              checkPhase = "cargo clippy";
+              installPhase = "touch $out";
+            }))) {
+            inherit (packages) age-threshold three;
+            inherit (checks) integration;
+          };
 
         formatter = pkgs.alejandra;
       };
