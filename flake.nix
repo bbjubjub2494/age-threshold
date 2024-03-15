@@ -53,6 +53,22 @@
           nativeCheckInputs = [packages.three pkgs.age];
         };
 
+        checks.rust-format = pkgs.stdenv.mkDerivation {
+          name = "age-threshold-rust-format";
+          src = ./.;
+
+          nativeCheckInputs = [pkgs.cargo pkgs.rustfmt];
+
+          doCheck = true;
+          checkPhase = ''
+            for p in age-threshold integration three; do
+              cargo -Z unstable-options -C $p fmt --check
+            done
+          '';
+
+          installPhase = "touch $out";
+        };
+
         formatter = pkgs.alejandra;
       };
       flake = {
