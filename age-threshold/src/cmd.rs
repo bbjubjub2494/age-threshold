@@ -1,7 +1,6 @@
 use age_core::format::FileKey;
 use age_core::secrecy::ExposeSecret;
 use chacha20poly1305::{AeadInPlace, ChaCha20Poly1305, KeyInit};
-use curve25519_dalek::Scalar;
 
 use nom_bufreader::bufreader::BufReader;
 use nom_bufreader::Parse;
@@ -144,9 +143,9 @@ impl Cli {
         for (r, s) in recipients.iter().zip(shares.iter()) {
             let recipient = r.to_recipient(UiCallbacks).map_err(io::Error::other)?;
             let share_key = new_file_key();
-            let mut buf = vec![0; 64];
-            buf[..32].copy_from_slice(&s.s.to_bytes());
-            buf[32..].copy_from_slice(&s.t.to_bytes());
+            let mut buf = [0; 68];
+            s.serialize(&mut buf);
+            let mut buf = buf.to_vec();
             let aead =
                 ChaCha20Poly1305::new(&hkdf(&[], b"", &share_key.expose_secret()[..]).into());
             aead.encrypt_in_place((&[0; 12]).into(), b"", &mut buf)
@@ -155,7 +154,6 @@ impl Cli {
                 .wrap_file_key(&share_key)
                 .map_err(io::Error::other)?;
             enc_shares.push(EncShare {
-                index: s.index,
                 ciphertext: buf,
                 stanzas: shares,
             });
@@ -221,11 +219,9 @@ impl Cli {
                 let mut buf = es.ciphertext;
                 aead.decrypt_in_place((&[0; 12]).into(), b"", &mut buf)
                     .map_err(io::Error::other)?;
-                let share = SecretShare {
-                    s: Scalar::from_bytes_mod_order(buf[..32].try_into().unwrap()),
-                    t: Scalar::from_bytes_mod_order(buf[32..].try_into().unwrap()),
-                    index: es.index,
-                };
+                let share = SecretShare::deserialize(
+                    &buf.try_into().or(Err(io::Error::other("wrong size")))?,
+                );
                 if !crypto::verify_share(&share, &header.commitments) {
                     return Err(io::Error::other("invalid share"));
                 }

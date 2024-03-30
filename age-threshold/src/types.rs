@@ -19,7 +19,6 @@ pub struct Header {
 
 #[derive(Debug)]
 pub struct EncShare {
-    pub index: u32,
     pub ciphertext: Vec<u8>,
     pub stanzas: Vec<Stanza>,
 }
