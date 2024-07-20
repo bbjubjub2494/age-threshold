@@ -115,6 +115,7 @@ dependencies = [
  "once_cell",
  "rand",
  "sha2",
+ "tempfile",
 ]
 
 [[package]]

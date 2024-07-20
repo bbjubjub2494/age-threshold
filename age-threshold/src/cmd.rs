@@ -5,14 +5,14 @@ use chacha20poly1305::{AeadInPlace, ChaCha20Poly1305, KeyInit};
 use nom_bufreader::bufreader::BufReader;
 use nom_bufreader::Parse;
 
-use age::cli_common::{file_io,UiCallbacks};
+use age::cli_common::{file_io, UiCallbacks};
 use age_core::primitives::hkdf;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::string::String;
 
 use crate::crypto;
@@ -46,23 +46,23 @@ pub fn new_file_key() -> FileKey {
     FileKey::from(buf)
 }
 
-pub enum Opts<'a> {
-    Encrypt(EncryptOpts<'a>),
-    Decrypt(DecryptOpts<'a>),
+pub enum Opts {
+    Encrypt(EncryptOpts),
+    Decrypt(DecryptOpts),
 }
-pub struct EncryptOpts<'a> {
-    threshold: Option<u32>,
-    identities: Vec<&'a Path>,
-    recipients: Vec<&'a str>,
-    recipient_files: Vec<&'a Path>,
-    armor: bool,
-    input: Option<&'a Path>,
-    output: Option<&'a Path>,
+pub struct EncryptOpts {
+    pub threshold: Option<u32>,
+    pub identities: Vec<PathBuf>,
+    pub recipients: Vec<String>,
+    pub recipients_files: Vec<PathBuf>,
+    pub armor: bool,
+    pub input: Option<PathBuf>,
+    pub output: Option<PathBuf>,
 }
-pub struct DecryptOpts<'a> {
-    identities: Vec<&'a Path>,
-    input: Option<&'a Path>,
-    output: Option<&'a Path>,
+pub struct DecryptOpts {
+    pub identities: Vec<PathBuf>,
+    pub input: Option<PathBuf>,
+    pub output: Option<PathBuf>,
 }
 
 fn decrypt_fk(identities: &[AgeIdentity], es: &EncShare) -> io::Result<Option<FileKey>> {
@@ -109,16 +109,6 @@ fn for_chunks(
     Ok(())
 }
 
-/*
-pub fn parse() {
-        if self.encrypt && self.decrypt {
-            return Err(io::Error::other(
-                "cannot encrypt and decrypt at the same time",
-            ));
-        }
-}
-*/
-
 pub fn run(opts: &Opts) -> io::Result<()> {
     match &opts {
         Opts::Encrypt(opts) => encrypt(opts),
@@ -131,7 +121,7 @@ fn encrypt(opts: &EncryptOpts) -> io::Result<()> {
     for r in &opts.recipients {
         recipients.push(AgeRecipient::from_bech32(r).map_err(io::Error::other)?);
     }
-    for f in &opts.recipient_files {
+    for f in &opts.recipients_files {
         let lines = read_text_file(f)?;
         for l in lines {
             recipients.push(AgeRecipient::from_bech32(l.as_str()).map_err(io::Error::other)?);
@@ -168,9 +158,12 @@ fn encrypt(opts: &EncryptOpts) -> io::Result<()> {
         });
     }
 
-    let out = file_io::OutputWriter::new(opts.output.map(|p| p.to_string_lossy().to_string()), true, file_io::OutputFormat::Binary, 0o600, false)?;
-    let (mut out, _) = cookie_factory::gen(format::write::header(t as usize, &commitments, &enc_shares), out)
-        .map_err(io::Error::other)?;
+    let (input, output) = set_up_io(&opts.input, &opts.output, file_io::OutputFormat::Binary)?;
+    let (mut out, _) = cookie_factory::gen(
+        format::write::header(t as usize, &commitments, &enc_shares),
+        output,
+    )
+    .map_err(io::Error::other)?;
 
     let mut nonce = [0; NONCE_SIZE];
     OsRng.fill_bytes(&mut nonce);
@@ -178,7 +171,6 @@ fn encrypt(opts: &EncryptOpts) -> io::Result<()> {
     out.write_all(&nonce)?;
 
     let aead = ChaCha20Poly1305::new(payload_key.into());
-    let input = file_io::InputReader::new(opts.input.map(|p| p.to_string_lossy().to_string()))?;
     let input = BufReader::new(input);
     for_chunks(input, CHUNK_SIZE, |counter, last_chunk, buf| {
         let mut iv = [0; 12];
@@ -197,7 +189,7 @@ fn decrypt(opts: &DecryptOpts) -> io::Result<()> {
         identities.push(AgeIdentity::from_bech32(&lines[0]).map_err(io::Error::other)?);
     }
 
-    let input = file_io::InputReader::new(opts.input.map(|p| p.to_string_lossy().to_string()))?;
+    let (input, mut output) = set_up_io(&opts.input, &opts.output, file_io::OutputFormat::Binary)?;
     let mut input = BufReader::new(input);
     fn header(input: &[u8]) -> nom::IResult<&[u8], Header, nom::error::Error<Vec<u8>>> {
         format::read::header(input).map_err(|err| err.to_owned())
@@ -240,13 +232,28 @@ fn decrypt(opts: &DecryptOpts) -> io::Result<()> {
     let payload_key = &hkdf(nonce.as_ref(), PAYLOAD_KEY_LABEL, file_key.expose_secret());
     let aead = ChaCha20Poly1305::new(payload_key.into());
 
-    let mut out = std::io::stdout();
     for_chunks(input, CHUNK_SIZE + TAG_SIZE, |counter, last_chunk, buf| {
         let mut iv = [0; 12];
         iv[..11].copy_from_slice(&counter.to_le_bytes()[..11]);
         iv[11] = last_chunk as u8;
         aead.decrypt_in_place((&iv).into(), b"", buf)
             .map_err(io::Error::other)?;
-        out.write_all(buf)
+        output.write_all(buf)
     })
+}
+
+fn set_up_io(
+    input: &Option<PathBuf>,
+    output: &Option<PathBuf>,
+    format: file_io::OutputFormat,
+) -> io::Result<(file_io::InputReader, file_io::OutputWriter)> {
+    let input = file_io::InputReader::new(input.as_ref().map(|p| p.to_string_lossy().to_string()))?;
+    let output = file_io::OutputWriter::new(
+        output.as_ref().map(|p| p.to_string_lossy().to_string()),
+        true,
+        format,
+        0o644,
+        input.is_terminal(),
+    )?;
+    Ok((input, output))
 }

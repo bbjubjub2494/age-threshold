@@ -114,6 +114,7 @@ dependencies = [
  "once_cell",
  "rand",
  "sha2",
+ "tempfile",
 ]
 
 [[package]]
@@ -1565,6 +1566,7 @@ version = "0.1.0"
 dependencies = [
  "age-threshold",
  "clap",
+ "tempfile",
 ]
 
 [[package]]
