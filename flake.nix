@@ -32,7 +32,7 @@
           name = "age-threshold";
           src = ./age-threshold;
 
-          cargoHash = "sha256-vsMElmhvotaArZdh/9WBuxOA5pmw9Gp05u13ONLWhz4=";
+          cargoHash = "sha256-vqYAGlRfUJ36vdhon5EO5zmMFCu1+s5FriOYmzYdWa0=";
         };
 
         packages.three = pkgs.rustPlatform.buildRustPackage {
@@ -40,7 +40,7 @@
           srcs = [./age-threshold ./three];
           sourceRoot = "three";
 
-          cargoHash = "sha256-KDARnp/rg0uIP9MP6MRi5jqm/q6YWb9kKNbmge8PjQ0=";
+          cargoHash = "sha256-0RVP2DoIEUkg2c8Pwobq0CWWNfcGfhOVMjGMPWUhVJo=";
         };
 
         packages.default = packages.three;
