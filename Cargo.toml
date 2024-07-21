@@ -3,7 +3,6 @@
 members = [
     "age-threshold",
     "three",
-    "integration",
 ]
 
 resolver = "2"

@@ -30,33 +30,15 @@
 
         packages.age-threshold = pkgs.rustPlatform.buildRustPackage {
           name = "age-threshold";
-          src = ./age-threshold;
+          src = ./.;
 
-          cargoHash = "sha256-vqYAGlRfUJ36vdhon5EO5zmMFCu1+s5FriOYmzYdWa0=";
+          cargoHash = "sha256-W3ts0jkxOGkiHu0F3phwNpbpqCbBLCIFzZ3uGkw4u1s=";
         };
 
-        packages.three = pkgs.rustPlatform.buildRustPackage {
-          name = "age-threshold";
-          srcs = [./age-threshold ./three];
-          sourceRoot = "three";
-
-          cargoHash = "sha256-0RVP2DoIEUkg2c8Pwobq0CWWNfcGfhOVMjGMPWUhVJo=";
-        };
-
-        packages.default = packages.three;
+        packages.default = packages.age-threshold;
 
         checks =
-          {
-            integration = pkgs.rustPlatform.buildRustPackage {
-              name = "age-threshold-integration";
-              src = ./integration;
-
-              cargoHash = "sha256-0DjfmESVAiuP+lyS9Dh4QAZE5mHJ9AF0oxrzV/U3tAk=";
-
-              nativeCheckInputs = [packages.three pkgs.age];
-            };
-          }
-          // pkgs.lib.mapAttrs'
+          pkgs.lib.mapAttrs'
           (k: v:
             pkgs.lib.nameValuePair "${k}-cargo-fmt" (v.overrideAttrs (prev: {
               name = "${prev.name}-cargo-fmt";
@@ -67,8 +49,7 @@
               checkPhase = "cargo fmt --check";
               installPhase = "touch $out";
             }))) {
-            inherit (packages) age-threshold three;
-            inherit (checks) integration;
+            inherit (packages) age-threshold;
           }
           // pkgs.lib.mapAttrs'
           (k: v:
@@ -81,8 +62,7 @@
               checkPhase = "cargo clippy";
               installPhase = "touch $out";
             }))) {
-            inherit (packages) age-threshold three;
-            inherit (checks) integration;
+            inherit (packages) age-threshold;
           };
 
         formatter = pkgs.alejandra;
