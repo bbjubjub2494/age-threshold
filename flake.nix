@@ -32,7 +32,7 @@
           name = "age-threshold";
           src = ./.;
 
-          cargoHash = "sha256-W3ts0jkxOGkiHu0F3phwNpbpqCbBLCIFzZ3uGkw4u1s=";
+          cargoHash = "sha256-iUnE33XWpj+HX2+lPC46+RuzbNkGG1HKX/Bgkrmf3IA=";
         };
 
         packages.default = packages.age-threshold;

@@ -1,9 +1,9 @@
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::*;
 
-use age_threshold::cmd::*;
+use three::{DecryptOpts, EncryptOpts, Opts};
 
 fn main() -> io::Result<()> {
     let cmd = command!().args(&[
@@ -44,13 +44,13 @@ fn main() -> io::Result<()> {
         ));
     }
     if decrypt {
-        run(&Opts::Decrypt(DecryptOpts {
+        three::run(&Opts::Decrypt(DecryptOpts {
             identities,
             output,
             input,
         }))
     } else {
-        run(&Opts::Encrypt(EncryptOpts {
+        three::run(&Opts::Encrypt(EncryptOpts {
             threshold,
             identities,
             recipients,

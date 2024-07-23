@@ -1,9 +1,9 @@
-use super::{DecryptOpts, EncryptOpts, Opts};
+use three::{DecryptOpts, EncryptOpts, Opts};
 
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tempfile::TempDir;
 
 struct Data {
@@ -47,7 +47,7 @@ fn test_2outof3_decrypt_sample() -> io::Result<()> {
         output,
         ..
     } = setup()?;
-    super::run(&Opts::Decrypt(DecryptOpts {
+    three::run(&Opts::Decrypt(DecryptOpts {
         input: Some(_2outof3),
         identities: vec![key1, key2],
         output: Some(output.clone()),

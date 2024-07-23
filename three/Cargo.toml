@@ -7,4 +7,8 @@ edition = "2021"
 
 [dependencies]
 age-threshold = { path = "../age-threshold" }
-clap = "4.5.1"
+clap = { version = "4.5.1", features = ["cargo"] }
+age = { version = "0.10.0", features = ["cli-common"] }
+
+[dev-dependencies]
+tempfile = "3.10.1"
