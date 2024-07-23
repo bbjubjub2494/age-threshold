@@ -19,7 +19,6 @@ pub enum Opts {
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct EncryptOpts {
     pub threshold: Option<u32>,
-    pub identities: Vec<PathBuf>,
     pub recipients: Vec<String>,
     pub recipients_files: Vec<PathBuf>,
     pub armor: bool,
@@ -85,7 +84,6 @@ where
     } else {
         Opts::Encrypt(EncryptOpts {
             threshold,
-            identities,
             recipients,
             recipients_files,
             armor,
@@ -112,9 +110,6 @@ fn encrypt(opts: &EncryptOpts) -> io::Result<()> {
         for l in lines {
             recipients.push(AgeRecipient::from_bech32(l.as_str()).map_err(io::Error::other)?);
         }
-    }
-    for _i in &opts.identities {
-        todo!();
     }
     let n = recipients.len() as u32;
     let t = opts.threshold.unwrap_or(n / 2 + 1);
