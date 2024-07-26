@@ -114,6 +114,7 @@ dependencies = [
  "once_cell",
  "rand",
  "sha2",
+ "testdata",
 ]
 
 [[package]]
@@ -1521,6 +1522,13 @@ dependencies = [
  "fastrand",
  "rustix",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "testdata"
+version = "0.1.0"
+dependencies = [
+ "rust-embed",
 ]
 
 [[package]]

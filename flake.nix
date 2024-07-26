@@ -32,10 +32,14 @@
           name = "age-threshold";
           src = ./.;
 
-          cargoHash = "sha256-iUnE33XWpj+HX2+lPC46+RuzbNkGG1HKX/Bgkrmf3IA=";
+          cargoHash = "sha256-l5Kc0UzRkum7kS45lTwKj7MzQ7EBGxFTGIlFM8ytqd4=";
         };
 
         packages.default = packages.age-threshold;
+
+        devShells.testdata = pkgs.mkShell {
+          buildInputs = [ packages.age-threshold pkgs.age pkgs.just ];
+        };
 
         checks =
           pkgs.lib.mapAttrs'
