@@ -58,7 +58,9 @@ pub fn header(input: &[u8]) -> IResult<&[u8], Header> {
                 enc_shares.push(share);
             }
             current_share = Some(EncShare {
-                ciphertext: s.body(),
+                ciphertext: STANDARD
+                    .decode(s.args[0])
+                    .map_err(|_| nom::Err::Error(Error::new(input, ErrorKind::Satisfy)))?,
                 stanzas: vec![],
             });
         } else {

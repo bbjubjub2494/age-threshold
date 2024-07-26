@@ -54,8 +54,8 @@ The second stanza has tag `commitments`. Its arguments are the commitment values
 
 The third stanza must be a share stanza:
 its tag is `share`, 
-it has no arguments,
-and its body is the encrypted share.
+its argument is the encrypted share
+and it is followed by an empty body.
 Following, one or more recipient stanzas must be present.
 They wrap the share file key.
 The pattern repeats for each threshold recipient.

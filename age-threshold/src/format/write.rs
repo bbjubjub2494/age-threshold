@@ -35,8 +35,7 @@ pub fn header<'a, W: Write>(
             .collect();
         wc = age_stanza("commitments", &args[..], &[])(wc)?;
         for es in enc_shares {
-            let args: &[String] = &[];
-            wc = age_stanza("share", args, &es.ciphertext)(wc)?;
+            wc = age_stanza("share", &[STANDARD.encode(&es.ciphertext)], &[])(wc)?;
             for s in &es.stanzas {
                 wc = age_stanza(&s.tag, &s.args, &s.body)(wc)?;
             }
