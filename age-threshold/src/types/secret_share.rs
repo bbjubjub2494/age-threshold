@@ -10,24 +10,12 @@ pub struct SecretShare {
 const SECRET_SHARE_HRP: &str = "age-threshold-share-";
 
 impl SecretShare {
-    pub fn serialize(&self, buf: &mut [u8; 68]) {
-        buf[..4].copy_from_slice(&self.index.to_le_bytes());
-        buf[4..36].copy_from_slice(&self.s.to_bytes());
-        buf[36..].copy_from_slice(&self.t.to_bytes());
-    }
-
-    pub fn deserialize(buf: &[u8; 68]) -> Self {
-        SecretShare {
-            index: u32::from_le_bytes(buf[..4].try_into().unwrap()),
-            s: Scalar::from_bytes_mod_order(buf[4..36].try_into().unwrap()),
-            t: Scalar::from_bytes_mod_order(buf[36..].try_into().unwrap()),
-        }
-    }
-    // needed for conversions
     pub fn to_bech32(&self) -> String {
         let hrp = bech32::Hrp::parse(SECRET_SHARE_HRP).unwrap();
         let mut buf = [0u8; 68];
-        self.serialize(&mut buf);
+        buf[..4].copy_from_slice(&self.index.to_le_bytes());
+        buf[4..36].copy_from_slice(&self.s.to_bytes());
+        buf[36..].copy_from_slice(&self.t.to_bytes());
         bech32::encode::<bech32::Bech32>(hrp, &buf)
             .unwrap()
             .to_uppercase()
@@ -42,7 +30,11 @@ impl SecretShare {
             return Err("invalid data length");
         }
         buf.copy_from_slice(&data[..]);
-        Ok(Self::deserialize(&buf))
+        Ok(SecretShare {
+            index: u32::from_le_bytes(buf[..4].try_into().unwrap()),
+            s: Scalar::from_bytes_mod_order(buf[4..36].try_into().unwrap()),
+            t: Scalar::from_bytes_mod_order(buf[36..].try_into().unwrap()),
+        })
     }
 }
 

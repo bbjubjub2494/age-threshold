@@ -12,6 +12,10 @@ use curve25519_dalek::ristretto::CompressedRistretto;
 use crate::format::common::VERSION_LINE;
 use crate::types::{EncShare, Header};
 
+fn base64decode(data: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    STANDARD.decode(data)
+}
+
 fn version_line(input: &[u8]) -> IResult<&[u8], ()> {
     let (input, _) = tag(VERSION_LINE)(input)?;
     Ok((input, ()))
@@ -39,8 +43,7 @@ pub fn header(input: &[u8]) -> IResult<&[u8], Header> {
     let mut commitments = vec![];
     for arg in stanza.args {
         let c = CompressedRistretto::from_slice(
-            STANDARD
-                .decode(arg)
+            base64decode(arg)
                 .map_err(|_| nom::Err::Error(Error::new(input, ErrorKind::Satisfy)))?
                 .as_slice(),
         )
@@ -58,8 +61,16 @@ pub fn header(input: &[u8]) -> IResult<&[u8], Header> {
                 enc_shares.push(share);
             }
             current_share = Some(EncShare {
-                ciphertext: STANDARD
-                    .decode(s.args[0])
+                index: s.args[0]
+                    .parse::<u32>()
+                    .map_err(|_| nom::Err::Error(Error::new(input, ErrorKind::Satisfy)))?,
+                s: base64decode(s.args[1])
+                    .map_err(|_| nom::Err::Error(Error::new(input, ErrorKind::Satisfy)))?
+                    .try_into()
+                    .map_err(|_| nom::Err::Error(Error::new(input, ErrorKind::Satisfy)))?,
+                t: base64decode(s.args[2])
+                    .map_err(|_| nom::Err::Error(Error::new(input, ErrorKind::Satisfy)))?
+                    .try_into()
                     .map_err(|_| nom::Err::Error(Error::new(input, ErrorKind::Satisfy)))?,
                 stanzas: vec![],
             });

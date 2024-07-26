@@ -10,6 +10,8 @@ use chacha20::cipher::{KeyIvInit, StreamCipher};
 use chacha20::ChaCha20;
 use chacha20poly1305::{AeadInPlace, ChaCha20Poly1305, KeyInit};
 
+use curve25519_dalek::scalar::Scalar;
+
 use nom_bufreader::bufreader::BufReader;
 use nom_bufreader::Parse;
 
@@ -40,22 +42,24 @@ pub fn encrypt(
 
     let (shares, commitments) = crypto::share_secret(&file_key, t, n);
     let mut enc_shares = vec![];
-    for (r, s) in recipients.iter().zip(shares.iter()) {
+    for (r, share) in recipients.iter().zip(shares.iter()) {
         let recipient = r.to_recipient(UiCallbacks).map_err(io::Error::other)?;
         let share_key = new_file_key();
-        let mut buf = [0; 68];
-        s.serialize(&mut buf);
-        let mut buf = buf.to_vec();
         let mut cipher = ChaCha20::new(
             &hkdf(&[], b"", &share_key.expose_secret()[..]).into(),
             (&[0; 12]).into(),
         );
-        cipher.apply_keystream(&mut buf);
+        let mut s = share.s.to_bytes();
+        cipher.apply_keystream(&mut s);
+        let mut t = share.t.to_bytes();
+        cipher.apply_keystream(&mut t);
         let shares = recipient
             .wrap_file_key(&share_key)
             .map_err(io::Error::other)?;
         enc_shares.push(types::EncShare {
-            ciphertext: buf,
+            index: share.index,
+            s,
+            t,
             stanzas: shares,
         });
     }
@@ -108,15 +112,21 @@ pub fn decrypt(
         }
 
         if let Some(share_key) = decrypt_fk(identities, &es)? {
-            let mut buf = es.ciphertext;
             let mut cipher = ChaCha20::new(
                 &hkdf(&[], b"", &share_key.expose_secret()[..]).into(),
                 (&[0; 12]).into(),
             );
-            cipher.apply_keystream(&mut buf);
-            let share = types::SecretShare::deserialize(
-                &buf.try_into().or(Err(io::Error::other("wrong size")))?,
-            );
+            let mut s = es.s;
+            cipher.apply_keystream(&mut s);
+            let mut t = es.t;
+            cipher.apply_keystream(&mut t);
+            let s = Scalar::from_bytes_mod_order(s);
+            let t = Scalar::from_bytes_mod_order(t);
+            let share = types::SecretShare {
+                index: es.index,
+                s,
+                t,
+            };
             if !crypto::verify_share(&share, &header.commitments) {
                 return Err(io::Error::other("invalid share"));
             }

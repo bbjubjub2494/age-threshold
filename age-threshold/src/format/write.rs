@@ -12,6 +12,10 @@ use curve25519_dalek::RistrettoPoint;
 use crate::format::common::VERSION_LINE;
 use crate::types::EncShare;
 
+fn base64encode(data: &[u8]) -> String {
+    STANDARD.encode(data)
+}
+
 fn version_line<W: Write>(wc: WriteContext<W>) -> GenResult<W> {
     slice(VERSION_LINE)(wc)
 }
@@ -35,7 +39,15 @@ pub fn header<'a, W: Write>(
             .collect();
         wc = age_stanza("commitments", &args[..], &[])(wc)?;
         for es in enc_shares {
-            wc = age_stanza("share", &[STANDARD.encode(&es.ciphertext)], &[])(wc)?;
+            wc = age_stanza(
+                "share",
+                &[
+                    es.index.to_string(),
+                    base64encode(&es.s),
+                    base64encode(&es.t),
+                ],
+                &[],
+            )(wc)?;
             for s in &es.stanzas {
                 wc = age_stanza(&s.tag, &s.args, &s.body)(wc)?;
             }
