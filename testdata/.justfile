@@ -1,5 +1,5 @@
 generate:
-  #!/usr/bin/env bash
+  #!/bin/sh
   mkdir -p data/2outof3/; cd data/2outof3/
   > recipients
   for i in $(seq 3); do
