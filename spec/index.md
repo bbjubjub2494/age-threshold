@@ -34,8 +34,8 @@ The file key is reconstructed by interpolating the `s` part of enough shares.
 Only the constant term of the polynomial is needed, so the Lagrange interpolation formula can be used.
 
 ### Encrypted shares
-An encrypted share consists of the serialized form encrypted with ChaCha20-Poly1305,
-using a unique dedicated file key as the key and an all-zero IV.
+An encrypted share consists of the serialized form masked with ChaCha20,
+using a the HKDF of a unique dedicated file key as the key and an all-zero IV.
 This allows wrapping the new file key using the existing Age routines.
 
 ## File format

@@ -105,6 +105,7 @@ dependencies = [
  "age-core",
  "base64 0.22.1",
  "bech32 0.11.0",
+ "chacha20",
  "chacha20poly1305",
  "cookie-factory",
  "curve25519-dalek",

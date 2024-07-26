@@ -6,6 +6,8 @@ use age::cli_common::UiCallbacks;
 use age_core::format::FileKey;
 use age_core::secrecy::ExposeSecret;
 
+use chacha20::cipher::{KeyIvInit, StreamCipher};
+use chacha20::ChaCha20;
 use chacha20poly1305::{AeadInPlace, ChaCha20Poly1305, KeyInit};
 
 use nom_bufreader::bufreader::BufReader;
@@ -44,9 +46,11 @@ pub fn encrypt(
         let mut buf = [0; 68];
         s.serialize(&mut buf);
         let mut buf = buf.to_vec();
-        let aead = ChaCha20Poly1305::new(&hkdf(&[], b"", &share_key.expose_secret()[..]).into());
-        aead.encrypt_in_place((&[0; 12]).into(), b"", &mut buf)
-            .map_err(io::Error::other)?;
+        let mut cipher = ChaCha20::new(
+            &hkdf(&[], b"", &share_key.expose_secret()[..]).into(),
+            (&[0; 12]).into(),
+        );
+        cipher.apply_keystream(&mut buf);
         let shares = recipient
             .wrap_file_key(&share_key)
             .map_err(io::Error::other)?;
@@ -103,11 +107,13 @@ pub fn decrypt(
             break;
         }
 
-        if let Some(file_key) = decrypt_fk(identities, &es)? {
-            let aead = ChaCha20Poly1305::new(&hkdf(&[], b"", &file_key.expose_secret()[..]).into());
+        if let Some(share_key) = decrypt_fk(identities, &es)? {
             let mut buf = es.ciphertext;
-            aead.decrypt_in_place((&[0; 12]).into(), b"", &mut buf)
-                .map_err(io::Error::other)?;
+            let mut cipher = ChaCha20::new(
+                &hkdf(&[], b"", &share_key.expose_secret()[..]).into(),
+                (&[0; 12]).into(),
+            );
+            cipher.apply_keystream(&mut buf);
             let share = types::SecretShare::deserialize(
                 &buf.try_into().or(Err(io::Error::other("wrong size")))?,
             );
