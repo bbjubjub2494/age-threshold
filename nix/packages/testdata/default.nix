@@ -20,7 +20,7 @@ in
 
     buildInputs = [age-threshold' age-plugin-simplepq age just];
 
-    buildPhase = "ls; pwd; just generate";
+    buildPhase = "ls; pwd; just";
 
     installPhase = "cp -R . $out";
   }
